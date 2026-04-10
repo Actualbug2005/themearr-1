@@ -183,6 +183,33 @@
         <h2 id="movie-heading" class="text-2xl font-bold mb-1 text-white"></h2>
         <p class="text-sm text-gray-400 mb-6">Pick the best match and click Accept &amp; Download</p>
         <div id="results-grid" class="grid grid-cols-1 xl:grid-cols-3 gap-6"></div>
+        <div class="mt-6 rounded-xl border border-gray-800 bg-gray-900 p-4">
+          <a
+            id="youtube-search-link"
+            href="#"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center justify-center rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-gray-100 transition hover:bg-white/10"
+          >
+            Open in YouTube
+          </a>
+          <form id="url-download-form" class="mt-4 flex flex-col gap-2 sm:flex-row">
+            <input
+              id="url-download-input"
+              type="url"
+              placeholder="https://www.youtube.com/watch?v=..."
+              class="flex-1 rounded-lg border border-white/10 bg-gray-950 px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              required
+            />
+            <button
+              id="url-download-submit"
+              type="submit"
+              class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
+            >
+              Download URL
+            </button>
+          </form>
+        </div>
       </div>
     </main>
     </div>

@@ -19,6 +19,10 @@ const rightLoading  = document.getElementById('right-loading');
 const rightContent  = document.getElementById('right-content');
 const movieHeading  = document.getElementById('movie-heading');
 const resultsGrid   = document.getElementById('results-grid');
+const youtubeSearchLink = document.getElementById('youtube-search-link');
+const urlDownloadForm = document.getElementById('url-download-form');
+const urlDownloadInput = document.getElementById('url-download-input');
+const urlDownloadSubmit = document.getElementById('url-download-submit');
 const statTotal     = document.getElementById('stat-total');
 const statDone      = document.getElementById('stat-downloaded');
 const statPending   = document.getElementById('stat-pending');
@@ -587,6 +591,9 @@ syncModalClose?.addEventListener('click', () => {
 /* ── Select & search ─────────────────────────────────────────────────────── */
 async function selectMovie(id) {
   activeMovieId = id;
+  if (urlDownloadInput) {
+    urlDownloadInput.value = '';
+  }
   renderList(searchInput.value); // re-render to update active highlight
 
   rightEmpty.classList.add('hidden');
@@ -603,11 +610,49 @@ async function selectMovie(id) {
   }
 }
 
+function nextPendingMovieId(currentMovieId) {
+  if (!allMovies.length) return null;
+
+  const startIdx = allMovies.findIndex(m => m.id === currentMovieId);
+  if (startIdx === -1) return null;
+
+  for (let i = startIdx + 1; i < allMovies.length; i += 1) {
+    if (allMovies[i].status === 'pending') return allMovies[i].id;
+  }
+
+  for (let i = 0; i < startIdx; i += 1) {
+    if (allMovies[i].status === 'pending') return allMovies[i].id;
+  }
+
+  return null;
+}
+
+async function markDownloadedAndAdvance(movieId) {
+  const movie = allMovies.find(m => m.id === movieId);
+  if (movie) {
+    movie.status = 'downloaded';
+  }
+
+  updateStats();
+  renderList(searchInput.value);
+
+  const nextId = nextPendingMovieId(movieId);
+  if (nextId) {
+    await selectMovie(nextId);
+  } else {
+    showToast('All pending movies are completed');
+  }
+}
+
 /* ── Render YouTube results ──────────────────────────────────────────────── */
 function renderResults(movie, results) {
   rightLoading.classList.add('hidden');
   movieHeading.textContent = `${movie.title} (${movie.year ?? '?'})`;
   resultsGrid.innerHTML = '';
+  const searchQuery = `${movie.title} ${movie.year ?? ''} theme song`;
+  if (youtubeSearchLink) {
+    youtubeSearchLink.href = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchQuery.trim())}`;
+  }
 
   if (!results.length) {
     resultsGrid.innerHTML = '<p class="text-gray-500 col-span-3">No results found.</p>';
@@ -677,11 +722,7 @@ async function handleDownload(btn) {
     await api('POST', '/api/download', { movie_id: movieId, video_id: videoId });
     showToast('Theme downloaded successfully!');
 
-    // Update local state
-    const m = allMovies.find(x => x.id === movieId);
-    if (m) m.status = 'downloaded';
-    updateStats();
-    renderList(searchInput.value);
+    await markDownloadedAndAdvance(movieId);
 
     btn.innerHTML = `
       <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -697,6 +738,33 @@ async function handleDownload(btn) {
     resultsGrid.querySelectorAll('.btn-download').forEach(b => { b.disabled = false; });
   }
 }
+
+urlDownloadForm?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!activeMovieId) {
+    showToast('Select a movie first', 'error');
+    return;
+  }
+
+  const url = urlDownloadInput.value.trim();
+  if (!url) return;
+
+  const originalText = urlDownloadSubmit.textContent;
+  urlDownloadSubmit.disabled = true;
+  urlDownloadSubmit.textContent = 'Downloading...';
+
+  try {
+    await api('POST', '/api/download-url', { movie_id: activeMovieId, url });
+    showToast('Theme downloaded successfully!');
+    urlDownloadInput.value = '';
+    await markDownloadedAndAdvance(activeMovieId);
+  } catch (e) {
+    showToast(`Download failed: ${e.message}`, 'error');
+  } finally {
+    urlDownloadSubmit.disabled = false;
+    urlDownloadSubmit.textContent = originalText;
+  }
+});
 
 /* ── Search filter ───────────────────────────────────────────────────────── */
 searchInput.addEventListener('input', () => renderList(searchInput.value));

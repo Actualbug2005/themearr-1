@@ -288,6 +288,11 @@ class DownloadRequest(BaseModel):
     video_id: str
 
 
+class DownloadUrlRequest(BaseModel):
+    movie_id: int
+    url: str
+
+
 def _current_version() -> str:
     env_version = os.getenv("APP_VERSION", "").strip()
     if env_version:
@@ -392,9 +397,8 @@ def update_status():
     }
 
 
-@app.post("/api/download")
-def download_theme(req: DownloadRequest):
-    movie = get_movie(req.movie_id)
+def _download_theme_for_url(movie_id: int, url: str):
+    movie = get_movie(movie_id)
     if not movie:
         raise HTTPException(status_code=404, detail="Movie not found")
 
@@ -402,7 +406,6 @@ def download_theme(req: DownloadRequest):
     if not folder:
         raise HTTPException(status_code=400, detail="Movie has no folder path")
 
-    url = f"https://www.youtube.com/watch?v={req.video_id}"
     output_template = os.path.join(folder, "theme.%(ext)s")
 
     cmd = [
@@ -423,8 +426,23 @@ def download_theme(req: DownloadRequest):
             detail=f"yt-dlp failed (exit {proc.returncode}): {proc.stderr[-500:]}",
         )
 
-    set_status(req.movie_id, "downloaded")
-    return {"status": "downloaded", "movie_id": req.movie_id}
+    set_status(movie_id, "downloaded")
+    return {"status": "downloaded", "movie_id": movie_id}
+
+
+@app.post("/api/download")
+def download_theme(req: DownloadRequest):
+    url = f"https://www.youtube.com/watch?v={req.video_id}"
+    return _download_theme_for_url(req.movie_id, url)
+
+
+@app.post("/api/download-url")
+def download_theme_url(req: DownloadUrlRequest):
+    url = req.url.strip()
+    if not (url.startswith("http://") or url.startswith("https://")):
+        raise HTTPException(status_code=400, detail="Invalid URL")
+
+    return _download_theme_for_url(req.movie_id, url)
 
 
 # ── Static files ─────────────────────────────────────────────────────────────
