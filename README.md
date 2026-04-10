@@ -5,7 +5,7 @@
 <h1 align="center">Themearr</h1>
 
 <p align="center">
-  Automatic movie theme-song downloader for Radarr libraries.
+  Automatic movie theme song downloader for Radarr libraries.
 </p>
 
 <p align="center">
