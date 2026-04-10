@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import logging
 import threading
@@ -429,6 +430,12 @@ def _download_theme_for_url(movie_id: int, url: str):
     output_template = os.path.join(folder, "theme.%(ext)s")
     normalized_url = _normalize_youtube_url(url)
 
+    if shutil.which("yt-dlp") is None:
+        raise HTTPException(status_code=500, detail="yt-dlp is not installed or not in PATH")
+
+    if shutil.which("deno") is None:
+        raise HTTPException(status_code=500, detail="deno is not installed or not in PATH")
+
     cmd = [
         "yt-dlp",
         "-x",
@@ -447,10 +454,13 @@ def _download_theme_for_url(movie_id: int, url: str):
         raise HTTPException(status_code=504, detail="Download timed out after 15 minutes")
 
     if proc.returncode != 0:
-        log.error("yt-dlp stderr: %s", proc.stderr)
+        stderr_tail = (proc.stderr or "").strip()[-1200:]
+        stdout_tail = (proc.stdout or "").strip()[-1200:]
+        combined_tail = "\n".join(part for part in [stderr_tail, stdout_tail] if part)
+        log.error("yt-dlp failed rc=%s stderr=%r stdout=%r", proc.returncode, stderr_tail, stdout_tail)
         raise HTTPException(
             status_code=500,
-            detail=f"yt-dlp failed (exit {proc.returncode}): {proc.stderr[-500:]}",
+            detail=f"yt-dlp failed (exit {proc.returncode}): {combined_tail or 'no output captured'}",
         )
 
     set_status(movie_id, "downloaded")
