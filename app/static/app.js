@@ -650,8 +650,10 @@ function renderResults(movie, results) {
   movieHeading.textContent = `${movie.title} (${movie.year ?? '?'})`;
   resultsGrid.innerHTML = '';
   const searchQuery = `${movie.title} ${movie.year ?? ''} theme song`;
+  const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchQuery.trim())}`;
   if (youtubeSearchLink) {
-    youtubeSearchLink.href = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchQuery.trim())}`;
+    youtubeSearchLink.href = searchUrl;
+    youtubeSearchLink.dataset.url = searchUrl;
   }
 
   if (!results.length) {
@@ -688,6 +690,14 @@ function renderResults(movie, results) {
             </svg>
             Accept &amp; Download
           </button>
+          <a
+            class="btn-open-youtube mt-1 inline-flex w-full items-center justify-center rounded-lg border border-white/15 bg-white/5 py-2 text-xs font-semibold text-gray-200 transition hover:bg-white/10"
+            href="https://www.youtube.com/watch?v=${esc(v.videoId)}"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Open in YouTube
+          </a>
         </div>
       `;
       resultsGrid.appendChild(card);
@@ -699,6 +709,18 @@ function renderResults(movie, results) {
   // Attach download handlers
   resultsGrid.querySelectorAll('.btn-download').forEach(btn => {
     btn.addEventListener('click', () => handleDownload(btn));
+  });
+
+  resultsGrid.querySelectorAll('.btn-open-youtube').forEach(link => {
+    link.addEventListener('click', (event) => {
+      const href = link.getAttribute('href');
+      if (!href) {
+        event.preventDefault();
+        return;
+      }
+      event.preventDefault();
+      window.open(href, '_blank', 'noopener,noreferrer');
+    });
   });
 }
 
@@ -775,6 +797,17 @@ btnFilter?.addEventListener('click', () => {
 
 filterMenu?.querySelectorAll('.filter-option').forEach(btn => {
   btn.addEventListener('click', () => applyFilterSelection(btn.dataset.filter || 'all'));
+});
+
+youtubeSearchLink?.addEventListener('click', (event) => {
+  const url = youtubeSearchLink.dataset.url || youtubeSearchLink.getAttribute('href') || '';
+  if (!url || url === '#') {
+    event.preventDefault();
+    return;
+  }
+
+  event.preventDefault();
+  window.open(url, '_blank', 'noopener,noreferrer');
 });
 
 /* ── Escape HTML ─────────────────────────────────────────────────────────── */
