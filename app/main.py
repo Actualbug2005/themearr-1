@@ -36,7 +36,7 @@ app = FastAPI(title="Themearr")
 
 STATIC_DIR = Path(__file__).parent / "static"
 VERSION_FILE = Path(os.getenv("THEMEARR_VERSION_FILE", "/opt/themearr/VERSION"))
-GITHUB_REPO = os.getenv("GITHUB_REPO", "Actuallbug2005/themearr")
+GITHUB_REPO = os.getenv("GITHUB_REPO", "Themearr/themearr")
 UPDATER_CMD = os.getenv("THEMEARR_UPDATER_CMD", "sudo /usr/local/bin/themearr-update")
 BROWSE_ROOTS = os.getenv("THEMEARR_BROWSE_ROOTS", "/mnt,/media,/movies,/tv")
 

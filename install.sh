@@ -60,7 +60,7 @@ cat > /usr/local/bin/themearr-update <<'EOF'
 set -euo pipefail
 
 TMP_DEPLOY="/tmp/themearr-deploy.sh"
-curl -fsSL https://raw.githubusercontent.com/Actuallbug2005/themearr/main/deploy.sh -o "$TMP_DEPLOY"
+curl -fsSL https://raw.githubusercontent.com/Themearr/themearr/main/deploy.sh -o "$TMP_DEPLOY"
 bash "$TMP_DEPLOY"
 systemctl restart themearr
 EOF

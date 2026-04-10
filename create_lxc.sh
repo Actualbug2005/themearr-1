@@ -5,7 +5,7 @@ set -e
 CTID=$(pvesh get /cluster/nextid)
 STORAGE="local-lvm"
 
-GITHUB_DEPLOY_URL="https://raw.githubusercontent.com/Actuallbug2005/themearr/main/deploy.sh"
+GITHUB_DEPLOY_URL="https://raw.githubusercontent.com/Themearr/themearr/main/deploy.sh"
 
 # ── 2. Dynamic Template Retrieval ─────────────────────────────────────────────
 echo "[1/6] Fetching latest Debian 12 template index..."
