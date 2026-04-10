@@ -442,7 +442,6 @@ def _download_theme_for_url(movie_id: int, url: str):
         "--audio-format", "mp3",
         "--audio-quality", "0",
         "--no-playlist",
-        "--max-downloads", "1",
         "-o", output_template,
         normalized_url,
     ]
