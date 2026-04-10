@@ -20,8 +20,8 @@ apt-get install -y --no-install-recommends \
 
 # Install deno (needed for yt-dlp JavaScript extraction)
 echo "[1b/5] Installing deno…"
-curl -fsSL https://deno.land/install.sh | sh
-export PATH="/root/.deno/bin:$PATH"
+curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh
+export PATH="/usr/local/bin:$PATH"
 
 # Install yt-dlp as a standalone binary (kept outside the venv so it can self-update)
 echo "[2/5] Installing yt-dlp…"
