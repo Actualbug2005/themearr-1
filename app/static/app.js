@@ -4,6 +4,7 @@ let activeMovieId = null;
 let statusFilter = 'all';
 let setupReady = false;
 let plexLoginPollTimer = null;
+let pendingPlexLogin = null;
 let updatePollTimer = null;
 let updateStatusTimer = null;
 let syncStatusTimer = null;
@@ -147,6 +148,7 @@ async function pollPlexLogin(pinId, code) {
     }
 
     clearPlexLoginPolling();
+    pendingPlexLogin = null;
     setupStatus.textContent = `Connected to ${status.accountName || 'Plex'}${status.serverName ? ` on ${status.serverName}` : ''}.`;
     setupPlexLogin.disabled = false;
     showToast('Plex sign-in complete');
@@ -160,12 +162,18 @@ async function pollPlexLogin(pinId, code) {
   }
 }
 
+function checkPendingPlexLoginSoon() {
+  if (!pendingPlexLogin) return;
+  pollPlexLogin(pendingPlexLogin.pinId, pendingPlexLogin.code);
+}
+
 async function startPlexLogin() {
   setupStatus.textContent = 'Requesting Plex sign-in...';
   setupPlexLogin.disabled = true;
 
   try {
-    const login = await api('POST', '/api/setup/plex/login');
+    const cleanForwardUrl = `${window.location.origin}${window.location.pathname}`;
+    const login = await api('POST', '/api/setup/plex/login', { forward_url: cleanForwardUrl });
 
     if (!login.authUrl || !login.pinId || !login.code) {
       throw new Error('Plex did not return a valid sign-in link');
@@ -179,12 +187,14 @@ async function startPlexLogin() {
     }
 
     setupStatus.textContent = 'Plex sign-in opened in a new tab. Approve it there.';
+    pendingPlexLogin = { pinId: login.pinId, code: login.code };
     clearPlexLoginPolling();
     plexLoginPollTimer = setInterval(() => {
       pollPlexLogin(login.pinId, login.code);
     }, 2000);
     await pollPlexLogin(login.pinId, login.code);
   } catch (e) {
+    pendingPlexLogin = null;
     setupPlexLogin.disabled = false;
     setupStatus.textContent = '';
     showToast(`Plex sign-in failed: ${e.message}`, 'error');
@@ -208,6 +218,7 @@ async function resetAppToSetup() {
     setupStatus.textContent = '';
     setupPlexLogin.disabled = false;
     clearPlexLoginPolling();
+    pendingPlexLogin = null;
     setAppVisible(false);
     await loadSetupState();
     showToast('App reset. Sign in with Plex to continue.');
@@ -217,6 +228,12 @@ async function resetAppToSetup() {
 }
 
 setupPlexLogin?.addEventListener('click', startPlexLogin);
+window.addEventListener('focus', checkPendingPlexLoginSoon);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) {
+    checkPendingPlexLoginSoon();
+  }
+});
 
 /* ── Render movie list ───────────────────────────────────────────────────── */
 function renderList(filter = '') {

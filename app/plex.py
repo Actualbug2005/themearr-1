@@ -29,6 +29,16 @@ def _client_headers(client_identifier: str, access_token: str | None = None) -> 
     return headers
 
 
+def _plex_client_values(client_identifier: str) -> dict[str, str]:
+    return {
+        "X-Plex-Product": PLEX_PRODUCT,
+        "X-Plex-Platform": PLEX_PLATFORM,
+        "X-Plex-Device": PLEX_PRODUCT,
+        "X-Plex-Client-Identifier": client_identifier,
+        "X-Plex-Version": get_setting("app_version", "dev"),
+    }
+
+
 def _create_client() -> httpx.Client:
     return httpx.Client(timeout=30)
 
@@ -45,12 +55,15 @@ def get_client_identifier() -> str:
     return client_identifier
 
 
-def create_login_pin() -> dict:
+def create_login_pin(forward_url: str = "") -> dict:
     client_identifier = get_client_identifier()
     with _create_client() as client:
         response = client.post(
             f"{PLEX_API_BASE}/pins",
-            data={"strong": "true"},
+            data={
+                "strong": "true",
+                **_plex_client_values(client_identifier),
+            },
             headers=_client_headers(client_identifier),
         )
         response.raise_for_status()
@@ -65,16 +78,17 @@ def create_login_pin() -> dict:
         "pinId": pin_id,
         "code": code,
         "clientIdentifier": client_identifier,
-        "authUrl": build_auth_url(code, client_identifier),
+        "authUrl": build_auth_url(code, client_identifier, forward_url),
     }
 
 
-def build_auth_url(code: str, client_identifier: str) -> str:
+def build_auth_url(code: str, client_identifier: str, forward_url: str = "") -> str:
     params = urlencode(
         {
             "clientID": client_identifier,
             "code": code,
             "context[device][product]": PLEX_PRODUCT,
+            **({"forwardUrl": forward_url} if forward_url else {}),
         },
         quote_via=quote,
     )
@@ -85,7 +99,10 @@ def check_login_pin(pin_id: int, code: str, client_identifier: str) -> dict:
     with _create_client() as client:
         response = client.get(
             f"{PLEX_API_BASE}/pins/{pin_id}",
-            params={"code": code},
+            params={
+                "code": code,
+                **_plex_client_values(client_identifier),
+            },
             headers=_client_headers(client_identifier),
         )
 
@@ -156,6 +173,10 @@ def get_user_info(access_token: str, client_identifier: str) -> dict:
     with _create_client() as client:
         response = client.get(
             f"{PLEX_API_BASE}/user",
+            params={
+                **_plex_client_values(client_identifier),
+                "X-Plex-Token": access_token,
+            },
             headers=_client_headers(client_identifier, access_token),
         )
         response.raise_for_status()
@@ -216,8 +237,13 @@ def resolve_plex_session(access_token: str, client_identifier: str) -> dict:
 
     with _create_client() as client:
         response = client.get(
-            f"{PLEX_API_BASE}/resources",
-            params={"includeHttps": "1", "includeRelay": "1"},
+            "https://plex.tv/api/resources",
+            params={
+                "includeHttps": "1",
+                "includeRelay": "1",
+                **_plex_client_values(client_identifier),
+                "X-Plex-Token": access_token,
+            },
             headers=_client_headers(client_identifier, access_token),
         )
         response.raise_for_status()

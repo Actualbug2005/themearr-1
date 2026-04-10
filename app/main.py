@@ -120,9 +120,13 @@ def setup_status():
     return _setup_payload()
 
 
+class PlexLoginRequest(BaseModel):
+    forward_url: str = ""
+
+
 @app.post("/api/setup/plex/login")
-def start_plex_login():
-    return create_login_pin()
+def start_plex_login(req: PlexLoginRequest):
+    return create_login_pin(req.forward_url.strip())
 
 
 @app.get("/api/setup/plex/login/status")
