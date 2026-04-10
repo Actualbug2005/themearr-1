@@ -9,6 +9,7 @@ Group=themearr
 
 WorkingDirectory=/opt/themearr
 
+Environment="HOME=/opt/themearr/data"
 Environment="XDG_CACHE_HOME=/opt/themearr/data/.cache"
 
 ExecStart=/opt/themearr/venv/bin/python -m uvicorn app.main:app \
