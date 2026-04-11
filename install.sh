@@ -97,7 +97,7 @@ systemctl enable themearr.service
 echo ""
 echo "✔  Installation complete."
 echo "   Open the web UI to complete the first-run setup by signing in with Plex."
-echo "   App updates can be triggered from the UI when a new GHCR package is published."
+echo "   App updates can be triggered from the UI when a new GitHub release is published."
 echo "   Logs:                            journalctl -u themearr -f"
 
 # Start the service immediately so the UI is available after deployment.

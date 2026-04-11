@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import re
 import shutil
 import subprocess
 import threading
@@ -211,11 +212,17 @@ async def plex_libraries(req: PlexLibrariesRequest):
     for server in req.servers:
         server_id = str(server.get("id", "")).strip()
         server_url = str(server.get("url", "")).strip()
+        server_urls = server.get("urls") if isinstance(server.get("urls"), list) else []
         server_token = str(server.get("token", "")).strip()
         if not server_id or not server_url or not server_token:
             continue
         try:
-            payload[server_id] = await list_server_libraries(server_url, server_token, client_identifier)
+            payload[server_id] = await list_server_libraries(
+                server_url,
+                server_token,
+                client_identifier,
+                [str(url) for url in server_urls],
+            )
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"Failed to list libraries for {server_id}: {exc}")
 
@@ -421,12 +428,27 @@ def _current_version() -> str:
     return "dev"
 
 
-def _latest_main_version() -> str:
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/commits/main"
+def _latest_release_version() -> str:
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
     headers = {"Accept": "application/vnd.github+json", "User-Agent": "themearr"}
     response = httpx.get(url, timeout=10, headers=headers)
     response.raise_for_status()
-    return response.json()["sha"][:12]
+    return str(response.json().get("tag_name", "")).strip()
+
+
+def _parse_semver(value: str) -> tuple[int, int, int] | None:
+    match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", str(value or "").strip())
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2)), int(match.group(3))
+
+
+def _is_update_available(current: str, latest: str) -> bool:
+    current_semver = _parse_semver(current)
+    latest_semver = _parse_semver(latest)
+    if current_semver and latest_semver:
+        return latest_semver > current_semver
+    return bool(latest and current != latest)
 
 
 def _run_update() -> None:
@@ -463,7 +485,7 @@ def app_version():
     check_error = ""
 
     try:
-        latest = _latest_main_version()
+        latest = _latest_release_version()
     except Exception as exc:
         log.warning("Version check failed: %s", exc)
         check_error = str(exc)
@@ -471,7 +493,7 @@ def app_version():
     return {
         "current": current,
         "latest": latest,
-        "updateAvailable": bool(latest and current != latest),
+        "updateAvailable": _is_update_available(current, latest),
         "updating": _update_in_progress,
         "updateError": _update_error,
         "checkError": check_error,

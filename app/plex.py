@@ -204,7 +204,7 @@ def get_user_info(access_token: str, client_identifier: str) -> dict:
         return _parse_user_payload(response)
 
 
-def _pick_server_connection(resource: dict) -> str:
+def _rank_server_connections(resource: dict) -> list[str]:
     connections = resource.get("connections") or []
     if not isinstance(connections, list):
         connections = []
@@ -222,16 +222,17 @@ def _pick_server_connection(resource: dict) -> str:
         )
     )
 
+    uris: list[str] = []
     for connection in ranked:
-        uri = str(connection.get("uri", "") or "").strip()
-        if uri:
-            return uri.rstrip("/")
+        uri = str(connection.get("uri", "") or "").strip().rstrip("/")
+        if uri and uri not in uris:
+            uris.append(uri)
 
-    uri = str(resource.get("uri", "") or "").strip()
-    if uri:
-        return uri.rstrip("/")
+    uri = str(resource.get("uri", "") or "").strip().rstrip("/")
+    if uri and uri not in uris:
+        uris.append(uri)
 
-    return ""
+    return uris
 
 
 def _parse_resources(response: httpx.Response) -> list[dict]:
@@ -281,15 +282,18 @@ def discover_plex_servers(access_token: str, client_identifier: str) -> list[dic
         if not server_id:
             continue
 
-        server_url = _pick_server_connection(resource)
-        if not server_url:
+        server_urls = _rank_server_connections(resource)
+        if not server_urls:
             continue
+
+        server_url = server_urls[0]
 
         servers.append(
             {
                 "id": server_id,
                 "name": str(resource.get("name", "") or "").strip() or server_url,
                 "url": server_url,
+                "urls": server_urls,
                 "token": str(resource.get("accessToken", "") or access_token).strip(),
                 "owned": _coerce_bool(resource.get("owned", "")),
                 "presence": _coerce_bool(resource.get("presence", "")),
@@ -477,15 +481,70 @@ def _movie_record_id(server_id: str, rating_key: str) -> str:
     return f"{server_id}:{rating_key}"
 
 
-async def list_server_libraries(server_url: str, server_token: str, client_identifier: str) -> list[dict]:
+def _candidate_server_urls(server: dict) -> list[str]:
+    urls: list[str] = []
+    raw_urls = server.get("urls")
+    if isinstance(raw_urls, list):
+        for entry in raw_urls:
+            value = str(entry or "").strip().rstrip("/")
+            if value and value not in urls:
+                urls.append(value)
+
+    primary = str(server.get("url", "") or "").strip().rstrip("/")
+    if primary and primary not in urls:
+        urls.insert(0, primary)
+
+    return urls
+
+
+async def _list_movie_sections_with_fallback(
+    client: httpx.AsyncClient,
+    server_urls: list[str],
+    server_token: str,
+    client_identifier: str,
+) -> tuple[str, list[dict]]:
+    last_exc: Exception | None = None
+    for url in server_urls:
+        try:
+            sections_response = await _get_xml(
+                client,
+                f"{url}/library/sections",
+                client_identifier,
+                server_token,
+            )
+            return url, _parse_library_sections(sections_response)
+        except Exception as exc:
+            last_exc = exc
+
+    if last_exc:
+        raise last_exc
+    raise RuntimeError("No usable Plex server URL was provided")
+
+
+async def list_server_libraries(
+    server_url: str,
+    server_token: str,
+    client_identifier: str,
+    server_urls: list[str] | None = None,
+) -> list[dict]:
+    candidates = list(server_urls or [])
+    candidates.append(server_url)
+    server_urls = []
+    for value in candidates:
+        normalized = str(value or "").strip().rstrip("/")
+        if normalized and normalized not in server_urls:
+            server_urls.append(normalized)
+
+    if not server_urls:
+        return []
+
     async with _create_async_client() as client:
-        sections_response = await _get_xml(
+        _selected_url, sections = await _list_movie_sections_with_fallback(
             client,
-            f"{server_url.rstrip('/')}/library/sections",
-            client_identifier,
+            server_urls,
             server_token,
+            client_identifier,
         )
-        sections = _parse_library_sections(sections_response)
 
     libraries: list[dict] = []
     for section in sections:
@@ -536,21 +595,20 @@ async def fetch_movies(log_fn: Callable[[str], None] | None = None) -> list[dict
         for server in selected_servers:
             server_id = str(server.get("id", "")).strip()
             server_name = str(server.get("name", "")).strip()
-            server_url = str(server.get("url", "")).strip()
+            server_urls = _candidate_server_urls(server)
             server_token = str(server.get("token", "")).strip()
-            if not server_id or not server_url or not server_token:
+            if not server_id or not server_urls or not server_token:
                 continue
 
             if log_fn:
-                log_fn(f"Using Plex server: {server_name or server_url}")
+                log_fn(f"Using Plex server: {server_name or server_urls[0]}")
 
-            sections_response = await _get_xml(
+            active_server_url, sections = await _list_movie_sections_with_fallback(
                 client,
-                f"{server_url.rstrip('/')}/library/sections",
-                client_identifier,
+                server_urls,
                 server_token,
+                client_identifier,
             )
-            sections = _parse_library_sections(sections_response)
             movie_sections = [section for section in sections if str(section.get("type", "")).lower() == "movie"]
             selected_keys = set(selected_libraries.get(server_id, []))
             if selected_keys:
@@ -570,7 +628,7 @@ async def fetch_movies(log_fn: Callable[[str], None] | None = None) -> list[dict
 
                 items = await _fetch_movie_items_for_section(
                     client,
-                    server_url,
+                    active_server_url,
                     section_key,
                     client_identifier,
                     server_token,

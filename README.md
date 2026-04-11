@@ -103,6 +103,15 @@ Project scripts include native deployment helpers:
 ## Updating
 
 Themearr includes an in-app update flow that runs the server-side updater command and restarts the service.
+Updates are now based on GitHub Releases using semantic version tags (for example `v1.2.3`).
+
+## Versioning
+
+Releases use semantic versioning:
+
+- `major`: breaking or large changes (`v2.0.0`)
+- `minor`: backward-compatible features (`v1.1.0`)
+- `patch`: fixes and small changes (`v1.1.1`)
 
 ## License
 
