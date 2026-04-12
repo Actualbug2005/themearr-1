@@ -22,16 +22,20 @@ export default function LoginPage() {
   }, [loading, connected, setupComplete, router])
 
   // Handle return from Plex OAuth
+  // We don't rely on query params (trailingSlash rewrites drop them).
+  // Instead: if plex_pin is in localStorage when the page loads, we just came back from Plex.
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const params = new URLSearchParams(window.location.search)
-    if (params.get('plexCallback') !== '1') return
     const saved = localStorage.getItem('plex_pin')
     if (!saved) return
-    const { pinId, code } = JSON.parse(saved)
-    localStorage.removeItem('plex_pin')
-    window.history.replaceState({}, '', '/login')
-    beginPolling(pinId, code)
+    try {
+      const { pinId, code } = JSON.parse(saved)
+      localStorage.removeItem('plex_pin')
+      window.history.replaceState({}, '', '/login')
+      beginPolling(pinId, code)
+    } catch {
+      localStorage.removeItem('plex_pin')
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -40,7 +44,7 @@ export default function LoginPage() {
   async function startLogin() {
     setError('')
     try {
-      const forwardUrl = `${window.location.origin}/login?plexCallback=1`
+      const forwardUrl = `${window.location.origin}/login`
       const data = await setupApi.startPlexLogin(forwardUrl)
       localStorage.setItem('plex_pin', JSON.stringify({ pinId: data.pinId, code: data.code }))
       window.location.href = data.authUrl
