@@ -44,14 +44,12 @@ ASSET_URL=$(echo "$RELEASE_JSON" \
 
 info "Deploying Themearr $TAG ($ARCH_SUFFIX)"
 
-# ── Stop service ──────────────────────────────────────────────────────────────
-
-if systemctl is-active --quiet "$SERVICE" 2>/dev/null; then
-  info "Stopping service..."
-  systemctl stop "$SERVICE"
-fi
-
 # ── Backup data ───────────────────────────────────────────────────────────────
+# Note: we do NOT stop the service first. On Linux, .NET assemblies are
+# memory-mapped and can be replaced on disk while the process is running.
+# The service is restarted at the end via systemd-run --no-block so the
+# restart happens after this script exits (not while it's still a child of
+# the running service process — which would kill us mid-deploy).
 
 BACKUP=""
 if [[ -d "$DATA_DIR" ]]; then
@@ -81,8 +79,19 @@ fi
 
 echo "$TAG" > "$INSTALL_DIR/VERSION"
 
-# ── Reload and start ──────────────────────────────────────────────────────────
+# ── Schedule restart ──────────────────────────────────────────────────────────
+# Use systemd-run --no-block to restart the service in a new transient unit,
+# completely detached from this script's process group. This means the restart
+# fires after this script exits cleanly — even if this script is a child of
+# the service being restarted.
 
+ok "Themearr $TAG deployed — scheduling service restart"
 systemctl daemon-reload
-systemctl restart "$SERVICE"
-ok "Themearr $TAG deployed successfully"
+if command -v systemd-run &>/dev/null; then
+  systemd-run --no-block --unit=themearr-restart \
+    --description="Restart Themearr after update" \
+    /bin/systemctl restart "$SERVICE"
+else
+  # Fallback for environments without systemd-run (shouldn't happen on Debian)
+  nohup systemctl restart "$SERVICE" </dev/null &>/dev/null &
+fi

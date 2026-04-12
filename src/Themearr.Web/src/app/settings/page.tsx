@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { settingsApi, setupApi, versionApi } from '@/lib/api'
 import type { Settings, VersionInfo } from '@/lib/types'
 import { AppShell } from '@/components/layout/AppShell'
@@ -11,25 +11,40 @@ export default function SettingsPage() {
   const [version,  setVersion]  = useState<VersionInfo | null>(null)
   const [saving,   setSaving]   = useState(false)
   const [saved,    setSaved]    = useState(false)
-  const [updating, setUpdating] = useState(false)
-  const [updateLogs, setUpdateLogs] = useState<string[]>([])
   const [error,    setError]    = useState('')
+
+  // Update modal state
+  const [updateOpen,   setUpdateOpen]   = useState(false)
+  const [updating,     setUpdating]     = useState(false)
+  const [updateDone,   setUpdateDone]   = useState(false)
+  const [updateError,  setUpdateError]  = useState('')
+  const [updateLogs,   setUpdateLogs]   = useState<string[]>([])
+  const logEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     settingsApi.get().then(setSettings).catch(() => null)
     versionApi.get().then(setVersion).catch(() => null)
   }, [])
 
-  // Poll update status
+  // Auto-scroll logs
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [updateLogs])
+
+  // Poll update status while in progress
   useEffect(() => {
     if (!updating) return
     const id = setInterval(async () => {
       try {
         const st = await versionApi.updateStatus()
-        setUpdateLogs(st.logs)
-        if (st.finished) setUpdating(false)
+        if (st.logs.length) setUpdateLogs(st.logs)
+        if (st.finished) {
+          setUpdating(false)
+          setUpdateDone(true)
+          if (st.error) setUpdateError(st.error)
+        }
       } catch { /* ignore */ }
-    }, 1500)
+    }, 1000)
     return () => clearInterval(id)
   }, [updating])
 
@@ -49,9 +64,27 @@ export default function SettingsPage() {
   }
 
   async function startUpdate() {
+    setUpdateOpen(true)
     setUpdating(true)
+    setUpdateDone(false)
+    setUpdateError('')
     setUpdateLogs([])
-    try { await versionApi.update() } catch { setUpdating(false) }
+    try {
+      await versionApi.update()
+    } catch (e) {
+      setUpdating(false)
+      setUpdateDone(true)
+      setUpdateError((e as Error).message)
+    }
+  }
+
+  function closeUpdateModal() {
+    if (updating) return
+    setUpdateOpen(false)
+    if (updateDone && !updateError) {
+      // Refresh version info after successful update
+      versionApi.get().then(setVersion).catch(() => null)
+    }
   }
 
   async function resetSetup() {
@@ -183,29 +216,97 @@ export default function SettingsPage() {
         {version && (
           <Section title="Updates">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-[#D0D5DD]">Current: <span className="font-mono text-[#F9FAFB]">{version.current}</span></p>
+              <div className="space-y-0.5">
+                <p className="text-sm text-[#D0D5DD]">
+                  Current: <span className="font-mono text-[#F9FAFB]">{version.current}</span>
+                </p>
                 {version.latest && (
                   <p className="text-sm text-[#667085]">
                     Latest: <span className="font-mono">{version.latest}</span>
-                    {version.updateAvailable && <span className="ml-2 text-[#FEC84B]">● Update available</span>}
+                    {version.updateAvailable && (
+                      <span className="ml-2 text-[#FEC84B]">● Update available</span>
+                    )}
                   </p>
                 )}
               </div>
               {version.updateAvailable && (
-                <Button onClick={startUpdate} loading={updating} size="sm">
+                <Button onClick={startUpdate} size="sm">
                   Update now
                 </Button>
               )}
             </div>
-            {updating && updateLogs.length > 0 && (
-              <div className="mt-3 max-h-40 overflow-y-auto rounded-lg bg-[#0C111D] px-3 py-2">
-                {updateLogs.map((l, i) => (
-                  <p key={i} className="font-mono text-xs text-[#667085] leading-relaxed">{l}</p>
-                ))}
-              </div>
-            )}
           </Section>
+        )}
+
+        {/* Update modal */}
+        {updateOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={closeUpdateModal} />
+            <div className="relative w-full max-w-lg rounded-xl border border-[#1D2939] bg-[#101828] shadow-2xl">
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-[#1D2939] px-5 py-4">
+                <div className="flex items-center gap-2.5">
+                  {updating && <Spinner size={16} className="text-[#BB0000]" />}
+                  {updateDone && !updateError && (
+                    <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[#12B76A]">
+                      <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
+                        <path d="M2 6l3 3 5-5" />
+                      </svg>
+                    </div>
+                  )}
+                  {updateDone && updateError && (
+                    <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[#F04438]">
+                      <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
+                        <path d="M3 3l6 6M9 3l-6 6" />
+                      </svg>
+                    </div>
+                  )}
+                  <h2 className="text-sm font-semibold text-[#F9FAFB]">
+                    {updating ? 'Updating Themearr…' : updateError ? 'Update failed' : 'Update complete'}
+                  </h2>
+                </div>
+                <button
+                  onClick={closeUpdateModal}
+                  disabled={updating}
+                  className="text-[#667085] hover:text-[#D0D5DD] transition-colors disabled:opacity-30"
+                  aria-label="Close"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <path d="M18 6 6 18M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Log output */}
+              <div className="h-72 overflow-y-auto bg-[#0C111D] px-4 py-3">
+                {updateLogs.length === 0 && updating && (
+                  <p className="font-mono text-xs text-[#475467]">Starting update…</p>
+                )}
+                {updateLogs.map((line, i) => (
+                  <p key={i} className="font-mono text-xs leading-relaxed text-[#667085] whitespace-pre-wrap">{line}</p>
+                ))}
+                {updateDone && !updateError && (
+                  <p className="mt-1 font-mono text-xs text-[#12B76A]">✓ Update applied successfully. The service will restart shortly.</p>
+                )}
+                {updateError && (
+                  <p className="mt-1 font-mono text-xs text-[#FDA29B]">✗ {updateError}</p>
+                )}
+                <div ref={logEndRef} />
+              </div>
+
+              {/* Footer */}
+              <div className="flex justify-end border-t border-[#1D2939] px-5 py-3">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={closeUpdateModal}
+                  disabled={updating}
+                >
+                  {updating ? 'Please wait…' : 'Close'}
+                </Button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Danger zone */}
