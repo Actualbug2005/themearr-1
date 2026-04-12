@@ -70,18 +70,38 @@ public class UpdateService(Database db, IConfiguration config, ILogger<UpdateSer
         _finished   = false;
         _error      = "";
         while (_logs.TryDequeue(out _)) { }
+        // Clear any previous persisted completion so stale state doesn't interfere
+        db.SetSetting("last_update_completed_at", "");
+        db.SetSetting("last_update_error", "");
 
         _ = Task.Run(RunAsync).ContinueWith(_ => _lock.Release());
         return true;
     }
 
-    public object GetStatus() => new
+    public object GetStatus()
     {
-        inProgress = _inProgress,
-        finished   = _finished,
-        error      = _error,
-        logs       = _logs.ToArray(),
-    };
+        var finished   = _finished;
+        var inProgress = _inProgress;
+        var error      = _error;
+
+        // The service restarts itself after an update, wiping in-memory state.
+        // Check the database so the frontend can detect completion after restart.
+        if (!inProgress && !finished)
+        {
+            var ts = db.GetSetting("last_update_completed_at");
+            if (!string.IsNullOrEmpty(ts) && long.TryParse(ts, out var unix))
+            {
+                var age = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - unix;
+                if (age < 300) // within 5 minutes
+                {
+                    finished = true;
+                    error    = db.GetSetting("last_update_error");
+                }
+            }
+        }
+
+        return new { inProgress, finished, error, logs = _logs.ToArray() };
+    }
 
     private async Task RunAsync()
     {
@@ -112,6 +132,10 @@ public class UpdateService(Database db, IConfiguration config, ILogger<UpdateSer
         {
             _finished   = true;
             _inProgress = false;
+            // Persist completion to DB so the frontend can detect it after the
+            // service restarts (in-memory state is wiped on restart).
+            db.SetSetting("last_update_completed_at", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString());
+            db.SetSetting("last_update_error", _error);
         }
     }
 

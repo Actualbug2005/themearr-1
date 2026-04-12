@@ -88,10 +88,12 @@ echo "$TAG" > "$INSTALL_DIR/VERSION"
 ok "Themearr $TAG deployed — scheduling service restart"
 systemctl daemon-reload
 if command -v systemd-run &>/dev/null; then
+  # Delay 5 s so the running API process has time to write its "finished" state
+  # to the database and serve one final status poll before the restart kills it.
   systemd-run --no-block --unit="themearr-restart-$$" \
     --description="Restart Themearr after update" \
-    /bin/systemctl restart "$SERVICE"
+    /bin/sh -c "sleep 5 && systemctl restart $SERVICE"
 else
   # Fallback for environments without systemd-run (shouldn't happen on Debian)
-  nohup systemctl restart "$SERVICE" </dev/null &>/dev/null &
+  (sleep 5 && systemctl restart "$SERVICE") </dev/null &>/dev/null &
 fi
