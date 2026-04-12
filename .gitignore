@@ -1,0 +1,31 @@
+# .NET
+src/Themearr.API/bin/
+src/Themearr.API/obj/
+*.user
+*.suo
+.vs/
+
+# Next.js
+src/Themearr.Web/node_modules/
+src/Themearr.Web/.next/
+src/Themearr.Web/out/
+
+# Data / secrets
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.local
+data/
+
+# Build outputs
+_publish/
+_dist/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp
+*.tmp
+*.log
