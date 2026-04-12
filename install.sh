@@ -83,7 +83,9 @@ chmod 440 /etc/sudoers.d/themearr-update
 # Python virtual environment
 python3 -m venv "${APP_DIR}/venv"
 "${APP_DIR}/venv/bin/pip" install --quiet --upgrade pip
-"${APP_DIR}/venv/bin/pip" install --quiet -r "${APP_DIR}/requirements.txt"
+# Some environments may temporarily build Rust-backed deps from source.
+# This allows PyO3-based builds to proceed on newer Python versions when needed.
+PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 "${APP_DIR}/venv/bin/pip" install --quiet -r "${APP_DIR}/requirements.txt"
 
 # Ownership
 chown -R "${APP_USER}:${APP_USER}" "${APP_DIR}"
