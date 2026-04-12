@@ -22,11 +22,11 @@ public class PlexService(HttpClient http, Database db, ILogger<PlexService> log)
         return id;
     }
 
-    private Dictionary<string, string> ClientHeaders(string clientId, string? token = null)
+    private Dictionary<string, string> ClientHeaders(string clientId, string? token = null, bool json = false)
     {
         var h = new Dictionary<string, string>
         {
-            ["Accept"]                  = "application/xml",
+            ["Accept"]                  = json ? "application/json" : "application/xml",
             ["X-Plex-Product"]          = Product,
             ["X-Plex-Platform"]         = Platform,
             ["X-Plex-Device"]           = Product,
@@ -52,7 +52,7 @@ public class PlexService(HttpClient http, Database db, ILogger<PlexService> log)
     {
         var clientId = GetClientIdentifier();
         var req = new HttpRequestMessage(HttpMethod.Post, $"{ApiBase}/pins");
-        foreach (var (k, v) in ClientHeaders(clientId)) req.Headers.TryAddWithoutValidation(k, v);
+        foreach (var (k, v) in ClientHeaders(clientId, json: true)) req.Headers.TryAddWithoutValidation(k, v);
 
         var bodyParams = ClientParams(clientId);
         bodyParams["strong"] = "true";
@@ -84,7 +84,7 @@ public class PlexService(HttpClient http, Database db, ILogger<PlexService> log)
         var url = $"{ApiBase}/pins/{pinId}?" + BuildQuery(ClientParams(clientId), ("code", code));
 
         var req = new HttpRequestMessage(HttpMethod.Get, url);
-        foreach (var (k, v) in ClientHeaders(clientId)) req.Headers.TryAddWithoutValidation(k, v);
+        foreach (var (k, v) in ClientHeaders(clientId, json: true)) req.Headers.TryAddWithoutValidation(k, v);
 
         var resp = await http.SendAsync(req);
         if ((int)resp.StatusCode == 404)
@@ -92,7 +92,9 @@ public class PlexService(HttpClient http, Database db, ILogger<PlexService> log)
         resp.EnsureSuccessStatusCode();
 
         var payload = await CoercePayloadAsync(resp);
-        var authToken = payload.GetValueOrDefault("authToken", "")?.ToString()?.Trim() ?? "";
+        // Plex v2 JSON returns camelCase "authToken"; XML returns snake_case "auth_token"
+        var authToken = (payload.GetValueOrDefault("authToken")
+                      ?? payload.GetValueOrDefault("auth_token"))?.ToString()?.Trim() ?? "";
 
         return new Dictionary<string, object>
         {
@@ -109,7 +111,7 @@ public class PlexService(HttpClient http, Database db, ILogger<PlexService> log)
         var url = $"{ApiBase}/user?" + BuildQuery(ClientParams(clientId), ("X-Plex-Token", accessToken));
 
         var req = new HttpRequestMessage(HttpMethod.Get, url);
-        foreach (var (k, v) in ClientHeaders(clientId, accessToken)) req.Headers.TryAddWithoutValidation(k, v);
+        foreach (var (k, v) in ClientHeaders(clientId, accessToken, json: true)) req.Headers.TryAddWithoutValidation(k, v);
 
         var resp = await http.SendAsync(req);
         resp.EnsureSuccessStatusCode();
@@ -403,7 +405,9 @@ public class PlexService(HttpClient http, Database db, ILogger<PlexService> log)
         if (contentType.Contains("json"))
         {
             var obj = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(text);
-            return obj?.ToDictionary(kv => kv.Key, kv => (object?)kv.Value.ToString()) ?? [];
+            return obj?.ToDictionary(kv => kv.Key, kv => (object?)(
+                kv.Value.ValueKind == JsonValueKind.String ? kv.Value.GetString() : kv.Value.ToString()
+            )) ?? [];
         }
         if (string.IsNullOrWhiteSpace(text)) return [];
         try
