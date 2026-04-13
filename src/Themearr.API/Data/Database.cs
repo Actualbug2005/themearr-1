@@ -288,25 +288,19 @@ public class Database(string dbPath)
     {
         using var conn = Open();
 
-        // Movie counts (using DB status — fast, avoids per-row filesystem checks)
-        int total = 0, downloaded = 0, pending = 0, ignored = 0;
-        using (var r = conn.Query("""
-            SELECT
-                SUM(CASE WHEN ignored = 0 THEN 1 ELSE 0 END),
-                SUM(CASE WHEN ignored = 0 AND status = 'downloaded' THEN 1 ELSE 0 END),
-                SUM(CASE WHEN ignored = 0 AND status = 'pending'    THEN 1 ELSE 0 END),
-                SUM(CASE WHEN ignored = 1 THEN 1 ELSE 0 END)
-            FROM movies
-            """))
-        {
-            if (r.Read())
-            {
-                total      = r.IsDBNull(0) ? 0 : (int)r.GetInt64(0);
-                downloaded = r.IsDBNull(1) ? 0 : (int)r.GetInt64(1);
-                pending    = r.IsDBNull(2) ? 0 : (int)r.GetInt64(2);
-                ignored    = r.IsDBNull(3) ? 0 : (int)r.GetInt64(3);
-            }
-        }
+        // Movie counts: use filesystem-verified status (same logic as the movies page)
+        // so that the dashboard numbers always match what's shown there.
+        var allMovies  = GetAllMovies();
+        int downloaded = allMovies.Count(m => m["status"]?.ToString() == "downloaded");
+        int pending    = allMovies.Count(m => m["status"]?.ToString() == "pending");
+        int ignored    = allMovies.Count(m => m["status"]?.ToString() == "ignored");
+
+        // Total = entire Plex library (all rows, including ignored and movies whose
+        // folders aren't yet mapped), so coverage reflects the full library, not just
+        // the subset the app has processed.
+        int total;
+        using (var r = conn.Query("SELECT COUNT(*) FROM movies"))
+            total = r.Read() ? (int)r.GetInt64(0) : 0;
 
         var coverage = total > 0 ? Math.Round(downloaded * 100.0 / total, 1) : 0.0;
 
@@ -334,25 +328,36 @@ public class Database(string dbPath)
                 });
         }
 
-        // Last 5 pending movies by first-sync date (shows what's new in the library)
+        // Last 5 recently-synced movies that are still pending (filesystem-verified).
+        // Pull extra candidates from DB ordered by syncedAt, then cross-reference with
+        // allMovies so only movies whose folders+files confirm 'pending' status are shown.
+        var pendingIds = allMovies
+            .Where(m => m["status"]?.ToString() == "pending")
+            .Select(m => m["id"]?.ToString())
+            .ToHashSet();
+
         var recentlyAdded = new List<Dictionary<string, object?>>();
         using (var r = conn.Query("""
             SELECT id, plex_server_id, plex_rating_key, title, year, synced_at
             FROM movies
             WHERE ignored = 0 AND status = 'pending' AND synced_at IS NOT NULL
-            ORDER BY synced_at DESC LIMIT 5
+            ORDER BY synced_at DESC LIMIT 20
             """))
         {
-            while (r.Read())
+            while (r.Read() && recentlyAdded.Count < 5)
+            {
+                var id = r.GetString(0);
+                if (!pendingIds.Contains(id)) continue;
                 recentlyAdded.Add(new Dictionary<string, object?>
                 {
-                    ["id"]            = r.GetString(0),
+                    ["id"]            = id,
                     ["plexServerId"]  = r.GetString(1),
                     ["plexRatingKey"] = r.GetString(2),
                     ["title"]         = r.GetString(3),
                     ["year"]          = r.IsDBNull(4) ? null : r.GetInt32(4),
                     ["syncedAt"]      = r.IsDBNull(5) ? null : r.GetString(5),
                 });
+            }
         }
 
         return new StatsResult(total, downloaded, pending, ignored, coverage, addedThisWeek, recentActivity, recentlyAdded);
