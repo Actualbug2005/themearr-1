@@ -14,6 +14,8 @@ export default function SettingsPage() {
   const [error,          setError]          = useState('')
   const [ytAuth,      setYtAuth]      = useState<{ authenticated: boolean; flowState: string; deviceUrl: string | null; userCode: string | null; error: string | null } | null>(null)
   const [ytStarting,  setYtStarting]  = useState(false)
+  const [ytPolling,   setYtPolling]   = useState(false)
+  const ytUrlOpened = useRef(false)
   const [cookiesOk,   setCookiesOk]   = useState<boolean | null>(null)
   const [cookiesUploading, setCookiesUploading] = useState(false)
   const [cookiesError, setCookiesError] = useState('')
@@ -34,18 +36,24 @@ export default function SettingsPage() {
     cookiesApi.status().then(s => setCookiesOk(s.configured)).catch(() => null)
   }, [])
 
-  // Poll while OAuth2 flow is in progress
+  // Poll from the moment the user clicks Connect until auth completes or fails
   useEffect(() => {
-    if (!ytAuth || ytAuth.authenticated || (ytAuth.flowState !== 'idle' && ytAuth.flowState !== 'waitingforuser' && ytAuth.flowState !== 'completed')) return
-    if (ytAuth.flowState !== 'waitingforuser') return
+    if (!ytPolling) return
     const id = setInterval(() => {
       youtubeAuthApi.status().then(s => {
+        // Auto-open the device URL the first time it appears
+        if (s.deviceUrl && !ytUrlOpened.current) {
+          ytUrlOpened.current = true
+          window.open(s.deviceUrl, '_blank', 'noopener,noreferrer')
+        }
         setYtAuth(s)
-        if (s.authenticated || s.flowState === 'completed' || s.flowState === 'failed') clearInterval(id)
+        if (s.authenticated || s.flowState === 'completed' || s.flowState === 'failed') {
+          setYtPolling(false)
+        }
       }).catch(() => null)
-    }, 2000)
+    }, 1500)
     return () => clearInterval(id)
-  }, [ytAuth?.flowState])
+  }, [ytPolling])
 
   // Auto-scroll logs
   useEffect(() => {
@@ -119,21 +127,19 @@ export default function SettingsPage() {
 
   async function startYouTubeAuth() {
     setYtStarting(true)
+    ytUrlOpened.current = false
     try {
       await youtubeAuthApi.start()
-      // Give the process a moment to start, then begin polling
-      setTimeout(() => {
-        youtubeAuthApi.status().then(setYtAuth).catch(() => null)
-        setYtStarting(false)
-      }, 1500)
-    } catch {
-      setYtStarting(false)
-    }
+      setYtPolling(true)   // start polling immediately — don't wait for 'waitingforuser'
+    } catch { /* ignore */ }
+    finally { setYtStarting(false) }
   }
 
   async function revokeYouTubeAuth() {
+    setYtPolling(false)
+    ytUrlOpened.current = false
     await youtubeAuthApi.revoke().catch(() => null)
-    setYtAuth(a => a ? { ...a, authenticated: false, flowState: 'idle' } : null)
+    setYtAuth(a => a ? { ...a, authenticated: false, flowState: 'idle', deviceUrl: null, userCode: null } : null)
   }
 
   async function uploadCookies(file: File) {
