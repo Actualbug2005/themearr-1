@@ -66,42 +66,28 @@ public class DownloadService(Database db, IHttpClientFactory httpClientFactory, 
 
             if (videoId != null)
             {
-                // YouTube URL — use RapidAPI
-                var apiKey = db.GetSetting("rapidapi_key", "");
-                if (string.IsNullOrWhiteSpace(apiKey))
-                    throw new InvalidOperationException("RapidAPI key is not configured. Please add it in Settings.");
-
-                AddLog(movieId, $"[themearr] Fetching download link via RapidAPI for video {videoId}…");
-                log.LogInformation("Fetching RapidAPI download link for {MovieId}: {VideoId}", movieId, videoId);
+                // YouTube URL — resolve to direct MP3 download link
+                AddLog(movieId, $"[themearr] Fetching download link for video {videoId}…");
+                log.LogInformation("Fetching download link for {MovieId}: {VideoId}", movieId, videoId);
 
                 var http = httpClientFactory.CreateClient();
                 http.Timeout = TimeSpan.FromSeconds(30);
-                using var req = new HttpRequestMessage(HttpMethod.Get, $"https://youtube-mp36.p.rapidapi.com/dl?id={videoId}");
-                req.Headers.Add("X-RapidAPI-Key", apiKey);
-                req.Headers.Add("X-RapidAPI-Host", "youtube-mp36.p.rapidapi.com");
-
-                using var resp = await http.SendAsync(req);
+                var encodedUrl = Uri.EscapeDataString(url);
+                using var resp = await http.GetAsync($"https://robotilab.online/download-api/yt/audio?url={encodedUrl}");
                 var body = await resp.Content.ReadAsStringAsync();
 
                 if (!resp.IsSuccessStatusCode)
-                    throw new InvalidOperationException($"RapidAPI error ({(int)resp.StatusCode}): {body}");
+                    throw new InvalidOperationException($"Download API error ({(int)resp.StatusCode}): {body}");
 
                 using var doc = JsonDocument.Parse(body);
                 var root = doc.RootElement;
 
-                var status = root.TryGetProperty("status", out var st) ? st.GetString() : null;
-                if (status != "ok")
-                {
-                    var msg = root.TryGetProperty("msg", out var m) ? m.GetString() : body;
-                    throw new InvalidOperationException($"RapidAPI returned status '{status}': {msg}");
-                }
-
-                downloadUrl = root.TryGetProperty("link", out var lnk) ? lnk.GetString()! :
-                              root.TryGetProperty("downloadUrl", out var dl) ? dl.GetString()! :
-                              throw new InvalidOperationException($"RapidAPI response missing download link: {body}");
+                downloadUrl = root.TryGetProperty("downloadUrl", out var dl) ? dl.GetString()! :
+                              root.TryGetProperty("link", out var lnk) ? lnk.GetString()! :
+                              throw new InvalidOperationException($"Download API response missing link: {body}");
 
                 themeTitle = root.TryGetProperty("title", out var t) ? t.GetString() : null;
-                AddLog(movieId, $"[themearr] Got download link. Downloading…");
+                AddLog(movieId, "[themearr] Got download link. Downloading…");
             }
             else
             {
