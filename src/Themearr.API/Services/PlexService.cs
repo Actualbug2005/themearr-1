@@ -5,7 +5,7 @@ using Themearr.API.Data;
 
 namespace Themearr.API.Services;
 
-public class PlexService(HttpClient http, Database db, ILogger<PlexService> log)
+public class PlexService(HttpClient http, Database db)
 {
     private const string ApiBase  = "https://plex.tv/api/v2";
     private const string Product  = "Themearr";

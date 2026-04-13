@@ -6,7 +6,7 @@ using Themearr.API.Data;
 
 namespace Themearr.API.Services;
 
-public class UpdateService(Database db, IConfiguration config, ILogger<UpdateService> log)
+public class UpdateService(Database db, IConfiguration config)
 {
     private readonly SemaphoreSlim _lock = new(1, 1);
     private readonly ConcurrentQueue<string> _logs = new();
