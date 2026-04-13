@@ -33,33 +33,75 @@ public class UpdateService(Database db, IConfiguration config)
         return "dev";
     }
 
+    private string _cachedLatest    = "";
+    private string _cachedCheckError = "";
+    private DateTime _cacheExpiresAt = DateTime.MinValue;
+    private readonly SemaphoreSlim _cacheLock = new(1, 1);
+
     public async Task<object> GetVersionInfoAsync()
     {
         var current = NormaliseSemver(CurrentVersion());
-        var latest = "";
-        var checkError = "";
+
+        await _cacheLock.WaitAsync();
         try
         {
-            using var http = new HttpClient();
-            http.DefaultRequestHeaders.Add("Accept", "application/vnd.github+json");
-            http.DefaultRequestHeaders.Add("User-Agent", "themearr");
-            var resp = await http.GetStringAsync($"https://api.github.com/repos/{GithubRepo}/releases/latest");
-            var doc  = JsonDocument.Parse(resp);
-            latest   = NormaliseSemver(doc.RootElement.GetProperty("tag_name").GetString() ?? "");
-        }
-        catch (Exception ex) { checkError = ex.Message; }
+            if (DateTime.UtcNow < _cacheExpiresAt)
+                return BuildVersionResponse(current, _cachedLatest, _cachedCheckError);
 
-        return new
-        {
-            current,
-            latest,
-            updateAvailable = IsUpdateAvailable(current, latest),
-            updating        = _inProgress,
-            updateError     = _error,
-            checkError,
-            repo            = GithubRepo,
-        };
+            var latest     = "";
+            var checkError = "";
+            try
+            {
+                using var http = new HttpClient();
+                http.DefaultRequestHeaders.Add("Accept", "application/vnd.github+json");
+                http.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
+                http.DefaultRequestHeaders.Add("User-Agent", $"Themearr/{current.TrimStart('v')}");
+
+                var token = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
+                if (!string.IsNullOrEmpty(token))
+                    http.DefaultRequestHeaders.Authorization =
+                        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+                var response = await http.GetAsync($"https://api.github.com/repos/{GithubRepo}/releases/latest");
+                var body     = await response.Content.ReadAsStringAsync();
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var doc = JsonDocument.Parse(body);
+                    latest  = NormaliseSemver(doc.RootElement.GetProperty("tag_name").GetString() ?? "");
+                }
+                else
+                {
+                    string detail;
+                    try   { detail = JsonDocument.Parse(body).RootElement.GetProperty("message").GetString() ?? body; }
+                    catch { detail = body.Length > 200 ? body[..200] : body; }
+                    checkError = $"GitHub API error {(int)response.StatusCode}: {detail}";
+                }
+            }
+            catch (Exception ex) { checkError = ex.Message; }
+
+            _cachedLatest     = latest;
+            _cachedCheckError = checkError;
+            // On success cache for 1 hour; on error cache for 5 minutes to avoid hammering GitHub
+            _cacheExpiresAt   = string.IsNullOrEmpty(checkError)
+                ? DateTime.UtcNow.AddHours(1)
+                : DateTime.UtcNow.AddMinutes(5);
+
+            return BuildVersionResponse(current, latest, checkError);
+        }
+        finally { _cacheLock.Release(); }
     }
+
+    private object BuildVersionResponse(string current, string latest, string checkError) => new
+    {
+        current,
+        latest,
+        updateAvailable = IsUpdateAvailable(current, latest),
+        updating        = _inProgress,
+        updateError     = _error,
+        checkError,
+        repo            = GithubRepo,
+    };
 
     public async Task<bool> StartAsync()
     {
