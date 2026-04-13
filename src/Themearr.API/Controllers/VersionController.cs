@@ -11,6 +11,14 @@ public class VersionController(UpdateService update) : ControllerBase
     public Task<IActionResult> GetVersion() =>
         update.GetVersionInfoAsync().ContinueWith(t => (IActionResult)Ok(t.Result));
 
+    [HttpPost("version/refresh")]
+    public async Task<IActionResult> RefreshVersion()
+    {
+        update.InvalidateCache();
+        var info = await update.GetVersionInfoAsync();
+        return Ok(info);
+    }
+
     [HttpPost("update")]
     public async Task<IActionResult> StartUpdate()
     {

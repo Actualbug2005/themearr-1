@@ -38,6 +38,13 @@ public class UpdateService(Database db, IConfiguration config)
     private DateTime _cacheExpiresAt = DateTime.MinValue;
     private readonly SemaphoreSlim _cacheLock = new(1, 1);
 
+    public void InvalidateCache()
+    {
+        _cacheLock.Wait();
+        try { _cacheExpiresAt = DateTime.MinValue; }
+        finally { _cacheLock.Release(); }
+    }
+
     public async Task<object> GetVersionInfoAsync()
     {
         var current = NormaliseSemver(CurrentVersion());

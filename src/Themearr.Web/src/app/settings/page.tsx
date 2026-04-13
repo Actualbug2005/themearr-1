@@ -14,11 +14,12 @@ export default function SettingsPage() {
   const [error,    setError]    = useState('')
 
   // Update modal state
-  const [updateOpen,   setUpdateOpen]   = useState(false)
-  const [updating,     setUpdating]     = useState(false)
-  const [updateDone,   setUpdateDone]   = useState(false)
-  const [updateError,  setUpdateError]  = useState('')
-  const [updateLogs,   setUpdateLogs]   = useState<string[]>([])
+  const [updateOpen,    setUpdateOpen]    = useState(false)
+  const [updating,      setUpdating]      = useState(false)
+  const [updateDone,    setUpdateDone]    = useState(false)
+  const [updateError,   setUpdateError]   = useState('')
+  const [updateLogs,    setUpdateLogs]    = useState<string[]>([])
+  const [checking,      setChecking]      = useState(false)
   const logEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -76,6 +77,15 @@ export default function SettingsPage() {
       setUpdateDone(true)
       setUpdateError((e as Error).message)
     }
+  }
+
+  async function checkForUpdates() {
+    setChecking(true)
+    try {
+      const v = await versionApi.refresh()
+      setVersion(v)
+    } catch { /* ignore */ }
+    finally { setChecking(false) }
   }
 
   function closeUpdateModal() {
@@ -229,11 +239,16 @@ export default function SettingsPage() {
                   </p>
                 )}
               </div>
-              {version.updateAvailable && (
-                <Button onClick={startUpdate} size="sm">
-                  Update now
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" onClick={checkForUpdates} loading={checking}>
+                  Check for updates
                 </Button>
-              )}
+                {version.updateAvailable && (
+                  <Button onClick={startUpdate} size="sm">
+                    Update now
+                  </Button>
+                )}
+              </div>
             </div>
           </Section>
         )}

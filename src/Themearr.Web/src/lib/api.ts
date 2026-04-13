@@ -111,7 +111,8 @@ export const historyApi = {
 // ── Version / update ──────────────────────────────────────────────────────────
 
 export const versionApi = {
-  get:    () => request<VersionInfo>('/api/version'),
-  update: () => request<{ started: boolean }>('/api/update', { method: 'POST' }),
+  get:     () => request<VersionInfo>('/api/version'),
+  refresh: () => request<VersionInfo>('/api/version/refresh', { method: 'POST' }),
+  update:  () => request<{ started: boolean }>('/api/update', { method: 'POST' }),
   updateStatus: () => request<{ inProgress: boolean; finished: boolean; error: string; logs: string[] }>('/api/update/status'),
 }
