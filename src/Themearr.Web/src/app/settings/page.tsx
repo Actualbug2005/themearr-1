@@ -204,6 +204,24 @@ export default function SettingsPage() {
           </div>
         </Section>
 
+        {/* Queue behaviour */}
+        <Section title="Queue">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium text-[#F9FAFB]">Auto-download mode</p>
+              <p className="text-xs text-[#667085]">Automatically download the best match for each movie without confirmation.</p>
+            </div>
+            <button
+              role="switch"
+              aria-checked={settings.autoDownload}
+              onClick={() => setSettings(s => s ? { ...s, autoDownload: !s.autoDownload } : s)}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none ${settings.autoDownload ? 'bg-[#BB0000]' : 'bg-[#344054]'}`}
+            >
+              <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${settings.autoDownload ? 'translate-x-5' : 'translate-x-0'}`} />
+            </button>
+          </div>
+        </Section>
+
         {/* Advanced */}
         <Section title="Advanced">
           <div className="grid grid-cols-2 gap-4">

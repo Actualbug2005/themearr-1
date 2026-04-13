@@ -30,19 +30,54 @@ public class MoviesController(Database db, YoutubeService youtube, DownloadServi
         var movie = db.GetMovie(movieId);
         if (movie == null) return NotFound(new { detail = "Movie not found" });
 
-        var title = movie["title"]?.ToString() ?? "";
-        var year  = movie["year"]?.ToString() ?? "";
-        var query = $"{title} {year} theme song".Trim();
+        var title    = movie["title"]?.ToString() ?? "";
+        var yearObj  = movie["year"];
+        var year     = yearObj?.ToString() ?? "";
+        var yearInt  = yearObj is int y ? y : (int?)null;
+        var query    = $"{title} {year} theme".Trim();
 
         try
         {
-            var results = await youtube.SearchAsync(query, maxResults: 3);
+            var results = await youtube.SearchAsync(query, maxResults: 8, movieTitle: title, movieYear: yearInt);
             return Ok(new { movie, results });
         }
         catch (Exception ex)
         {
             return StatusCode(502, new { detail = $"YouTube search error: {ex.Message}" });
         }
+    }
+
+    [HttpPost("auto-download/{movieId}")]
+    public async Task<IActionResult> AutoDownload(string movieId)
+    {
+        var movie = db.GetMovie(movieId);
+        if (movie == null) return NotFound(new { detail = "Movie not found" });
+
+        var title   = movie["title"]?.ToString() ?? "";
+        var yearObj = movie["year"];
+        var year    = yearObj?.ToString() ?? "";
+        var yearInt = yearObj is int y ? y : (int?)null;
+        var query   = $"{title} {year} theme".Trim();
+
+        List<Dictionary<string, object?>> results;
+        try
+        {
+            results = await youtube.SearchAsync(query, maxResults: 8, movieTitle: title, movieYear: yearInt);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(502, new { detail = $"YouTube search error: {ex.Message}" });
+        }
+
+        var best = results.FirstOrDefault(r => r.GetValueOrDefault("bestMatch") is true);
+        if (best == null)
+            return UnprocessableEntity(new { detail = "No suitable match found — please select manually." });
+
+        var videoId = best["videoId"]?.ToString() ?? "";
+        var url     = $"https://www.youtube.com/watch?v={videoId}";
+        download.Start(movieId, url);
+
+        return Accepted(new { started = true, movieId, videoId, videoTitle = best["title"] });
     }
 
     [HttpPost("download")]

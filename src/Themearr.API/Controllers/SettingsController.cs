@@ -19,6 +19,7 @@ public class SettingsController(Database db) : ControllerBase
             maxSearchDirs = int.Parse(db.GetSetting("max_search_dirs", "20000")),
             searchDepth   = int.Parse(db.GetSetting("search_depth", "4")),
         },
+        autoDownload = db.GetSetting("auto_download", "false") == "true",
     });
 
     [HttpPost]
@@ -33,6 +34,7 @@ public class SettingsController(Database db) : ControllerBase
         var depth   = Math.Clamp(req.Advanced.GetValueOrDefault("searchDepth", 4), 1, 10);
         db.SetSetting("max_search_dirs", maxDirs.ToString());
         db.SetSetting("search_depth", depth.ToString());
+        db.SetSetting("auto_download", req.AutoDownload ? "true" : "false");
 
         if (req.SelectedServers.Count > 0)
         {
@@ -55,4 +57,5 @@ public class SettingsPayload
     public List<Dictionary<string, string>>  PathMappings       { get; set; } = [];
     public List<string>                      LibraryPaths       { get; set; } = [];
     public Dictionary<string, int>           Advanced           { get; set; } = [];
+    public bool                              AutoDownload       { get; set; } = false;
 }

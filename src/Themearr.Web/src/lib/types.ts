@@ -16,6 +16,8 @@ export interface YoutubeResult {
   thumbnail: string | null
   duration: string | null
   channel: string
+  score: number
+  bestMatch: boolean
 }
 
 export interface PlexServer {
@@ -58,6 +60,7 @@ export interface Settings {
     maxSearchDirs: number
     searchDepth: number
   }
+  autoDownload: boolean
 }
 
 export interface SyncStatus {

@@ -2,33 +2,38 @@
 
 import Image from 'next/image'
 import { useEffect, useRef, useState } from 'react'
-import { moviesApi } from '@/lib/api'
+import { moviesApi, settingsApi } from '@/lib/api'
 import type { Movie, YoutubeResult } from '@/lib/types'
 import { AppShell } from '@/components/layout/AppShell'
 import { Button, Input, Spinner } from '@/components/ui'
 
 export default function QueuePage() {
-  const [pending,     setPending]     = useState<Movie[] | null>(null)
-  const [currentIdx,  setCurrentIdx]  = useState(0)
-  const [results,     setResults]     = useState<YoutubeResult[]>([])
-  const [searching,   setSearching]   = useState(false)
-  const [manualUrl,   setManualUrl]   = useState('')
-  const [error,       setError]       = useState('')
-  const [downloading, setDownloading] = useState(false)
+  const [pending,      setPending]      = useState<Movie[] | null>(null)
+  const [currentIdx,   setCurrentIdx]   = useState(0)
+  const [results,      setResults]      = useState<YoutubeResult[]>([])
+  const [searching,    setSearching]    = useState(false)
+  const [manualUrl,    setManualUrl]    = useState('')
+  const [error,        setError]        = useState('')
+  const [downloading,  setDownloading]  = useState(false)
+  const [autoMode,     setAutoMode]     = useState(false)
 
   // Holds the movieId being downloaded so the polling closure keeps the right id
-  // even after the component re-renders or the displayed movie changes
   const downloadingMovieId = useRef<string | null>(null)
   const searchedFor        = useRef<string | null>(null)
+  // Tracks whether we've already triggered auto-download for the current movie
+  const autoTriggeredFor   = useRef<string | null>(null)
 
   const current   = pending?.[currentIdx] ?? null
   const remaining = pending ? Math.max(0, pending.length - currentIdx) : 0
 
-  // ── Load pending movies once ───────────────────────────────────────────────
+  // ── Load pending movies + auto mode setting ────────────────────────────────
   useEffect(() => {
     moviesApi.list()
       .then(movies => setPending(movies.filter(m => m.status === 'pending')))
       .catch(() => setPending([]))
+    settingsApi.get()
+      .then(s => setAutoMode(s.autoDownload))
+      .catch(() => null)
   }, [])
 
   // ── Auto-search when displayed movie changes ───────────────────────────────
@@ -44,6 +49,21 @@ export default function QueuePage() {
       .catch((e: Error) => setError(e.message))
       .finally(() => setSearching(false))
   }, [current])
+
+  // ── Auto-download best match when in auto mode ─────────────────────────────
+  useEffect(() => {
+    if (!autoMode) return
+    if (!current || downloading) return
+    if (autoTriggeredFor.current === current.id) return
+    if (searching || results.length === 0) return
+
+    const best = results.find((r: YoutubeResult) => r.bestMatch)
+    if (!best) return
+
+    autoTriggeredFor.current = current.id
+    doDownload(best.videoId)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoMode, current, results, searching, downloading])
 
   // ── Poll download status while a download is in flight ────────────────────
   useEffect(() => {
@@ -85,7 +105,6 @@ export default function QueuePage() {
     setError('')
     try {
       await moviesApi.download(current.id, videoId)
-      // download is fire-and-forget (202); polling handles the rest
     } catch (e) {
       setError((e as Error).message)
       setDownloading(false)
@@ -100,7 +119,20 @@ export default function QueuePage() {
     setError('')
     try {
       await moviesApi.downloadUrl(current.id, manualUrl.trim())
-      // download is fire-and-forget (202); polling handles the rest
+    } catch (e) {
+      setError((e as Error).message)
+      setDownloading(false)
+      downloadingMovieId.current = null
+    }
+  }
+
+  async function doAutoDownload() {
+    if (!current) return
+    downloadingMovieId.current = current.id
+    setDownloading(true)
+    setError('')
+    try {
+      await moviesApi.autoDownload(current.id)
     } catch (e) {
       setError((e as Error).message)
       setDownloading(false)
@@ -136,17 +168,28 @@ export default function QueuePage() {
     )
   }
 
+  const bestMatch = results.find(r => r.bestMatch)
+
   // ── Queue ──────────────────────────────────────────────────────────────────
   return (
     <AppShell
       title="Queue"
       actions={
-        <Button variant="ghost" size="sm" onClick={advanceQueue} disabled={downloading}>
-          Skip
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <path d="M5 12h14M12 5l7 7-7 7" />
-          </svg>
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* Auto mode indicator */}
+          {autoMode && (
+            <span className="flex items-center gap-1.5 text-xs text-[#12B76A] px-2 py-1 rounded-lg bg-[#12B76A]/10">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#12B76A] animate-pulse" />
+              Auto mode
+            </span>
+          )}
+          <Button variant="ghost" size="sm" onClick={advanceQueue} disabled={downloading}>
+            Skip
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
+          </Button>
+        </div>
       }
     >
       <div className="max-w-2xl space-y-5">
@@ -178,6 +221,15 @@ export default function QueuePage() {
               <p className="text-xs font-semibold text-[#667085] uppercase tracking-wider flex-1">
                 YouTube results
               </p>
+              {/* Auto-download best match button */}
+              {bestMatch && !searching && (
+                <Button size="sm" onClick={doAutoDownload} disabled={downloading}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 0v10m0 0-3-3m3 3 3-3" />
+                  </svg>
+                  Auto-download best match
+                </Button>
+              )}
               {searching && <Spinner size={13} className="text-[#BB0000]" />}
             </div>
 
@@ -193,7 +245,7 @@ export default function QueuePage() {
             )}
 
             {results.map(r => (
-              <div key={r.videoId} className="flex items-center gap-3 px-4 py-3 hover:bg-[#0C111D]/60 transition-colors">
+              <div key={r.videoId} className={`flex items-center gap-3 px-4 py-3 transition-colors ${r.bestMatch ? 'bg-[#12B76A]/5 hover:bg-[#12B76A]/10' : 'hover:bg-[#0C111D]/60'}`}>
                 {r.thumbnail && (
                   <img
                     src={r.thumbnail}
@@ -203,7 +255,14 @@ export default function QueuePage() {
                   />
                 )}
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-[#F9FAFB] truncate">{r.title}</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-sm font-medium text-[#F9FAFB] truncate">{r.title}</p>
+                    {r.bestMatch && (
+                      <span className="flex-shrink-0 text-[10px] font-semibold text-[#12B76A] bg-[#12B76A]/15 px-1.5 py-0.5 rounded">
+                        Best match
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-[#667085]">
                     {r.channel}{r.duration ? ` · ${r.duration}` : ''}
                   </p>
