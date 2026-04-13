@@ -127,7 +127,7 @@ public class DownloadService(Database db, IHttpClientFactory httpClientFactory, 
 
                 downloadUrl = link;
                 themeTitle = videoTitle;
-                AddLog(movieId, "[themearr] Got download link. Downloading…");
+                AddLog(movieId, $"[themearr] Got download link: {link}. Downloading…");
             }
             else
             {
@@ -147,7 +147,11 @@ public class DownloadService(Database db, IHttpClientFactory httpClientFactory, 
             using var dlResp = await http2.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead);
 
             if (!dlResp.IsSuccessStatusCode)
-                throw new InvalidOperationException($"Download failed ({(int)dlResp.StatusCode}): {dlResp.ReasonPhrase}");
+            {
+                var errBody = await dlResp.Content.ReadAsStringAsync();
+                var snippet = errBody.Length > 300 ? errBody[..300] : errBody;
+                throw new InvalidOperationException($"Download failed ({(int)dlResp.StatusCode}) from {dlResp.RequestMessage?.RequestUri}: {snippet}");
+            }
 
             await using var fileStream = File.Create(outputPath);
             await dlResp.Content.CopyToAsync(fileStream);
