@@ -25,7 +25,7 @@ public class DownloadService(Database db, ILogger<DownloadService> log)
         var psi = new ProcessStartInfo
         {
             FileName               = "yt-dlp",
-            Arguments              = $"-x --audio-format mp3 --audio-quality 0 --no-playlist -o \"{outputTemplate}\" \"{url}\"",
+            Arguments              = $"-x --audio-format mp3 --audio-quality 0 --no-playlist --extractor-args \"youtube:player_client=android,web\" -o \"{outputTemplate}\" \"{url}\"",
             RedirectStandardOutput = true,
             RedirectStandardError  = true,
             UseShellExecute        = false,
