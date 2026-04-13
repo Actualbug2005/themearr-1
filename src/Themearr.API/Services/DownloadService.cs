@@ -61,12 +61,17 @@ public class DownloadService(Database db, IHttpClientFactory httpClientFactory, 
 
             var videoId = ExtractVideoId(url);
 
-            string downloadUrl;
             string? themeTitle = null;
+
+            var outputPath = Path.Combine(folder, "theme.mp3");
+
+            // Remove any existing theme files before writing
+            foreach (var f in Directory.EnumerateFiles(folder, "theme.*"))
+                File.Delete(f);
 
             if (videoId != null)
             {
-                // YouTube URL — use youtube-mp36 RapidAPI (may require polling while status=processing)
+                // YouTube URL — use youtube-mp36 RapidAPI, poll until ready then download immediately
                 var apiKey = db.GetSetting("rapidapi_key", "");
                 if (string.IsNullOrWhiteSpace(apiKey))
                     throw new InvalidOperationException("RapidAPI key is not configured. Please add it in Settings.");
@@ -75,16 +80,16 @@ public class DownloadService(Database db, IHttpClientFactory httpClientFactory, 
                 log.LogInformation("Fetching RapidAPI download link for {MovieId}: {VideoId}", movieId, videoId);
 
                 var http = httpClientFactory.CreateClient();
-                http.Timeout = TimeSpan.FromSeconds(30);
+                http.Timeout = TimeSpan.FromMinutes(10);
 
-                string? status = null;
-                string? link = null;
-                string? videoTitle = null;
                 var deadline = DateTime.UtcNow.AddMinutes(5);
                 var attempt = 0;
 
-                while (DateTime.UtcNow < deadline)
+                while (true)
                 {
+                    if (DateTime.UtcNow >= deadline)
+                        throw new InvalidOperationException("RapidAPI timed out waiting for processing to complete.");
+
                     attempt++;
                     using var req = new HttpRequestMessage(HttpMethod.Get, $"https://youtube-mp36.p.rapidapi.com/dl?id={videoId}");
                     req.Headers.Add("X-RapidAPI-Key", apiKey);
@@ -99,16 +104,7 @@ public class DownloadService(Database db, IHttpClientFactory httpClientFactory, 
                     using var doc = JsonDocument.Parse(body);
                     var root = doc.RootElement;
 
-                    status = root.TryGetProperty("status", out var st) ? st.GetString() : null;
-                    videoTitle = root.TryGetProperty("title", out var t) ? t.GetString() : null;
-
-                    if (status == "ok")
-                    {
-                        link = root.TryGetProperty("link", out var lnk) ? lnk.GetString() : null;
-                        if (string.IsNullOrEmpty(link))
-                            throw new InvalidOperationException($"RapidAPI returned ok but missing link: {body}");
-                        break;
-                    }
+                    var status = root.TryGetProperty("status", out var st) ? st.GetString() : null;
 
                     if (status == "processing")
                     {
@@ -117,45 +113,54 @@ public class DownloadService(Database db, IHttpClientFactory httpClientFactory, 
                         continue;
                     }
 
-                    // Any other status is a hard failure
-                    var msg = root.TryGetProperty("msg", out var m) ? m.GetString() : body;
-                    throw new InvalidOperationException($"RapidAPI error (status={status}): {msg}");
+                    if (status != "ok")
+                    {
+                        var msg = root.TryGetProperty("msg", out var m) ? m.GetString() : body;
+                        throw new InvalidOperationException($"RapidAPI error (status={status}): {msg}");
+                    }
+
+                    var link = root.TryGetProperty("link", out var lnk) ? lnk.GetString() : null;
+                    if (string.IsNullOrEmpty(link))
+                        throw new InvalidOperationException($"RapidAPI returned ok but missing link: {body}");
+
+                    themeTitle = root.TryGetProperty("title", out var t) ? t.GetString() : null;
+                    AddLog(movieId, "[themearr] Got download link. Downloading immediately…");
+
+                    // Download immediately while the link is fresh
+                    using var dlResp = await http.GetAsync(link, HttpCompletionOption.ResponseHeadersRead);
+                    if (!dlResp.IsSuccessStatusCode)
+                    {
+                        var errBody = await dlResp.Content.ReadAsStringAsync();
+                        var snippet = errBody.Length > 300 ? errBody[..300] : errBody;
+                        throw new InvalidOperationException($"Download failed ({(int)dlResp.StatusCode}): {snippet}");
+                    }
+
+                    await using var fileStream = File.Create(outputPath);
+                    await dlResp.Content.CopyToAsync(fileStream);
+                    await fileStream.FlushAsync();
+                    break;
                 }
-
-                if (status != "ok" || string.IsNullOrEmpty(link))
-                    throw new InvalidOperationException("RapidAPI timed out waiting for processing to complete.");
-
-                downloadUrl = link;
-                themeTitle = videoTitle;
-                AddLog(movieId, $"[themearr] Got download link: {link}. Downloading…");
             }
             else
             {
                 // Non-YouTube URL — download directly
-                downloadUrl = url;
-                AddLog(movieId, $"[themearr] Downloading from URL…");
+                AddLog(movieId, "[themearr] Downloading from URL…");
+
+                var http = httpClientFactory.CreateClient();
+                http.Timeout = TimeSpan.FromMinutes(15);
+                using var dlResp = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+
+                if (!dlResp.IsSuccessStatusCode)
+                {
+                    var errBody = await dlResp.Content.ReadAsStringAsync();
+                    var snippet = errBody.Length > 300 ? errBody[..300] : errBody;
+                    throw new InvalidOperationException($"Download failed ({(int)dlResp.StatusCode}): {snippet}");
+                }
+
+                await using var fileStream = File.Create(outputPath);
+                await dlResp.Content.CopyToAsync(fileStream);
+                await fileStream.FlushAsync();
             }
-
-            var outputPath = Path.Combine(folder, "theme.mp3");
-
-            // Remove any existing theme files before writing
-            foreach (var f in Directory.EnumerateFiles(folder, "theme.*"))
-                File.Delete(f);
-
-            var http2 = httpClientFactory.CreateClient();
-            http2.Timeout = TimeSpan.FromMinutes(15);
-            using var dlResp = await http2.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead);
-
-            if (!dlResp.IsSuccessStatusCode)
-            {
-                var errBody = await dlResp.Content.ReadAsStringAsync();
-                var snippet = errBody.Length > 300 ? errBody[..300] : errBody;
-                throw new InvalidOperationException($"Download failed ({(int)dlResp.StatusCode}) from {dlResp.RequestMessage?.RequestUri}: {snippet}");
-            }
-
-            await using var fileStream = File.Create(outputPath);
-            await dlResp.Content.CopyToAsync(fileStream);
-            await fileStream.FlushAsync();
 
             AddLog(movieId, "[themearr] Download complete.");
 
