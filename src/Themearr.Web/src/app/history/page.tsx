@@ -4,17 +4,36 @@ import { useEffect, useState } from 'react'
 import { historyApi } from '@/lib/api'
 import type { HistoryEntry } from '@/lib/types'
 import { AppShell } from '@/components/layout/AppShell'
-import { Spinner } from '@/components/ui'
+import { Button, Spinner } from '@/components/ui'
 
 export default function HistoryPage() {
-  const [entries, setEntries] = useState<HistoryEntry[] | null>(null)
+  const [entries,    setEntries]    = useState<HistoryEntry[] | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
 
-  useEffect(() => {
+  function load() {
     historyApi.get().then(setEntries).catch(() => setEntries([]))
-  }, [])
+  }
+
+  useEffect(() => { load() }, [])
+
+  async function refresh() {
+    setRefreshing(true)
+    try { await historyApi.get().then(setEntries) } catch { /* ignore */ }
+    finally { setRefreshing(false) }
+  }
 
   return (
-    <AppShell title="History">
+    <AppShell title="History" actions={
+      <Button variant="ghost" size="sm" onClick={refresh} loading={refreshing}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+          <path d="M21 3v5h-5" />
+          <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+          <path d="M3 21v-5h5" />
+        </svg>
+        Refresh
+      </Button>
+    }>
       {entries === null ? (
         <div className="flex justify-center py-24">
           <Spinner size={28} className="text-[#BB0000]" />

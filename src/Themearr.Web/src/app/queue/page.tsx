@@ -36,6 +36,15 @@ export default function QueuePage() {
       .catch(() => null)
   }, [])
 
+  async function toggleAutoMode() {
+    const next = !autoMode
+    setAutoMode(next)
+    try {
+      const s = await settingsApi.get()
+      await settingsApi.save({ ...s, autoDownload: next })
+    } catch { /* ignore */ }
+  }
+
   // ── Auto-search when displayed movie changes ───────────────────────────────
   useEffect(() => {
     if (!current || searchedFor.current === current.id) return
@@ -181,13 +190,15 @@ export default function QueuePage() {
       title="Queue"
       actions={
         <div className="flex items-center gap-2">
-          {/* Auto mode indicator */}
-          {autoMode && (
-            <span className="flex items-center gap-1.5 text-xs text-[#12B76A] px-2 py-1 rounded-lg bg-[#12B76A]/10">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#12B76A] animate-pulse" />
-              Auto mode
+          <button
+            onClick={toggleAutoMode}
+            className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${autoMode ? 'bg-[#12B76A]/15 text-[#12B76A]' : 'bg-[#1D2939] text-[#667085] hover:text-[#D0D5DD]'}`}
+          >
+            <span className={`relative inline-flex h-4 w-7 flex-shrink-0 rounded-full border-2 border-transparent transition-colors ${autoMode ? 'bg-[#12B76A]' : 'bg-[#344054]'}`}>
+              <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${autoMode ? 'translate-x-3' : 'translate-x-0'}`} />
             </span>
-          )}
+            Auto
+          </button>
           <Button variant="ghost" size="sm" onClick={advanceQueue} disabled={downloading}>
             Skip
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
