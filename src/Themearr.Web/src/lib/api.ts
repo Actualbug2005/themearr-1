@@ -126,6 +126,20 @@ export const historyApi = {
 }
 
 
+// ── RapidAPI key ──────────────────────────────────────────────────────────────
+
+export const rapidApiApi = {
+  status: () => request<{ configured: boolean }>('/api/settings/rapidapi'),
+
+  save: (key: string) =>
+    request<{ configured: boolean }>('/api/settings/rapidapi', {
+      method: 'POST',
+      body: JSON.stringify({ key }),
+    }),
+
+  remove: () => request<{ configured: boolean }>('/api/settings/rapidapi', { method: 'DELETE' }),
+}
+
 // ── Stats ─────────────────────────────────────────────────────────────────────
 
 export const statsApi = {

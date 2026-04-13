@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { settingsApi, setupApi, versionApi } from '@/lib/api'
+import { rapidApiApi, settingsApi, setupApi, versionApi } from '@/lib/api'
 import type { Settings, VersionInfo } from '@/lib/types'
 import { AppShell } from '@/components/layout/AppShell'
 import { Button, Input, Spinner } from '@/components/ui'
@@ -12,6 +12,11 @@ export default function SettingsPage() {
   const [saving,         setSaving]         = useState(false)
   const [saved,          setSaved]          = useState(false)
   const [error,          setError]          = useState('')
+  const [rapidApiOk,     setRapidApiOk]     = useState<boolean | null>(null)
+  const [rapidApiKey,    setRapidApiKey]    = useState('')
+  const [rapidApiSaving, setRapidApiSaving] = useState(false)
+  const [rapidApiError,  setRapidApiError]  = useState('')
+
   // Update modal state
   const [updateOpen,    setUpdateOpen]    = useState(false)
   const [updating,      setUpdating]      = useState(false)
@@ -24,6 +29,7 @@ export default function SettingsPage() {
   useEffect(() => {
     settingsApi.get().then(setSettings).catch(() => null)
     versionApi.get().then(setVersion).catch(() => null)
+    rapidApiApi.status().then(s => setRapidApiOk(s.configured)).catch(() => null)
   }, [])
 
   // Auto-scroll logs
@@ -85,6 +91,27 @@ export default function SettingsPage() {
       setVersion(v)
     } catch { /* ignore */ }
     finally { setChecking(false) }
+  }
+
+  async function saveRapidApiKey() {
+    if (!rapidApiKey.trim()) return
+    setRapidApiSaving(true)
+    setRapidApiError('')
+    try {
+      await rapidApiApi.save(rapidApiKey.trim())
+      setRapidApiOk(true)
+      setRapidApiKey('')
+    } catch (e) {
+      setRapidApiError((e as Error).message)
+    } finally {
+      setRapidApiSaving(false)
+    }
+  }
+
+  async function removeRapidApiKey() {
+    await rapidApiApi.remove().catch(() => null)
+    setRapidApiOk(false)
+    setRapidApiKey('')
   }
 
   function closeUpdateModal() {
@@ -221,6 +248,58 @@ export default function SettingsPage() {
               onChange={() => setSettings(s => s ? { ...s, autoSync: !s.autoSync } : s)}
             />
           </div>
+        </Section>
+
+        {/* RapidAPI key */}
+        <Section title="RapidAPI Key" hint="Required for YouTube downloads. Uses the youtube-mp36 API on RapidAPI — free tier includes 500 requests/month.">
+          <div className="rounded-lg border border-[#1D2939] bg-[#0C111D] px-3.5 py-3 space-y-1">
+            <p className="text-xs font-medium text-[#D0D5DD]">How to get a free API key</p>
+            <ol className="text-xs text-[#667085] space-y-0.5 list-decimal list-inside">
+              <li>Go to <span className="text-[#D0D5DD]">rapidapi.com</span> and create a free account</li>
+              <li>Search for <span className="text-[#D0D5DD]">youtube-mp36</span> and open the API</li>
+              <li>Subscribe to the <span className="text-[#D0D5DD]">Basic (free)</span> plan</li>
+              <li>Copy your key from the <span className="text-[#D0D5DD]">X-RapidAPI-Key</span> header shown in the code snippets</li>
+              <li>Paste it below and click Save</li>
+            </ol>
+          </div>
+
+          {rapidApiOk === null ? (
+            <div className="flex items-center gap-2 text-sm text-[#475467]"><Spinner size={13} className="text-[#BB0000]" /> Checking…</div>
+          ) : rapidApiOk ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between rounded-lg border border-[#12B76A]/30 bg-[#12B76A]/5 px-3.5 py-2.5">
+                <div className="flex items-center gap-2">
+                  <svg width="13" height="13" viewBox="0 0 12 12" fill="none" stroke="#12B76A" strokeWidth="2.5" strokeLinecap="round"><path d="M2 6l3 3 5-5" /></svg>
+                  <p className="text-sm text-[#D0D5DD]">API key configured</p>
+                </div>
+                <Button variant="ghost" size="sm" onClick={removeRapidApiKey}>Remove</Button>
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Replace with a new key…"
+                  value={rapidApiKey}
+                  onChange={e => setRapidApiKey(e.target.value)}
+                  className="flex-1 font-mono text-xs"
+                />
+                <Button onClick={saveRapidApiKey} loading={rapidApiSaving} size="sm" disabled={!rapidApiKey.trim()}>
+                  Replace
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <Input
+                placeholder="Paste your RapidAPI key…"
+                value={rapidApiKey}
+                onChange={e => setRapidApiKey(e.target.value)}
+                className="flex-1 font-mono text-xs"
+              />
+              <Button onClick={saveRapidApiKey} loading={rapidApiSaving} size="sm" disabled={!rapidApiKey.trim()}>
+                Save
+              </Button>
+            </div>
+          )}
+          {rapidApiError && <p className="text-xs text-[#FDA29B]">{rapidApiError}</p>}
         </Section>
 
         {/* Advanced */}

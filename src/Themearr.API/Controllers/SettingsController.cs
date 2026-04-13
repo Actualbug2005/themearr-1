@@ -53,7 +53,33 @@ public class SettingsController(Database db) : ControllerBase
         return Get();
     }
 
+    // ── RapidAPI key ──────────────────────────────────────────────────────────
+
+    [HttpGet("rapidapi")]
+    public IActionResult GetRapidApiKey()
+    {
+        var key = db.GetSetting("rapidapi_key", "");
+        return Ok(new { configured = !string.IsNullOrWhiteSpace(key) });
+    }
+
+    [HttpPost("rapidapi")]
+    public IActionResult SaveRapidApiKey([FromBody] RapidApiKeyPayload payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload.Key))
+            return BadRequest(new { detail = "API key cannot be empty." });
+        db.SetSetting("rapidapi_key", payload.Key.Trim());
+        return Ok(new { configured = true });
+    }
+
+    [HttpDelete("rapidapi")]
+    public IActionResult DeleteRapidApiKey()
+    {
+        db.SetSetting("rapidapi_key", "");
+        return Ok(new { configured = false });
+    }
 }
+
+public record RapidApiKeyPayload(string Key);
 
 public class SettingsPayload
 {
