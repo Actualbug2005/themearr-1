@@ -79,7 +79,7 @@ public class DownloadService(Database db, IHttpClientFactory httpClientFactory, 
 
                 string? status = null;
                 string? link = null;
-                string? title = null;
+                string? videoTitle = null;
                 var deadline = DateTime.UtcNow.AddMinutes(5);
                 var attempt = 0;
 
@@ -100,7 +100,7 @@ public class DownloadService(Database db, IHttpClientFactory httpClientFactory, 
                     var root = doc.RootElement;
 
                     status = root.TryGetProperty("status", out var st) ? st.GetString() : null;
-                    title  = root.TryGetProperty("title",  out var t)  ? t.GetString()  : null;
+                    videoTitle = root.TryGetProperty("title", out var t) ? t.GetString() : null;
 
                     if (status == "ok")
                     {
@@ -126,7 +126,7 @@ public class DownloadService(Database db, IHttpClientFactory httpClientFactory, 
                     throw new InvalidOperationException("RapidAPI timed out waiting for processing to complete.");
 
                 downloadUrl = link;
-                themeTitle = title;
+                themeTitle = videoTitle;
                 AddLog(movieId, "[themearr] Got download link. Downloading…");
             }
             else
