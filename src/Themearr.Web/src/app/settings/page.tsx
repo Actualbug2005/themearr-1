@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { settingsApi, setupApi, versionApi } from '@/lib/api'
+import { cookiesApi, settingsApi, setupApi, versionApi } from '@/lib/api'
 import type { Settings, VersionInfo } from '@/lib/types'
 import { AppShell } from '@/components/layout/AppShell'
 import { Button, Input, Spinner } from '@/components/ui'
@@ -9,9 +9,12 @@ import { Button, Input, Spinner } from '@/components/ui'
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [version,  setVersion]  = useState<VersionInfo | null>(null)
-  const [saving,   setSaving]   = useState(false)
-  const [saved,    setSaved]    = useState(false)
-  const [error,    setError]    = useState('')
+  const [saving,         setSaving]         = useState(false)
+  const [saved,          setSaved]          = useState(false)
+  const [error,          setError]          = useState('')
+  const [cookiesOk,      setCookiesOk]      = useState<boolean | null>(null)
+  const [cookiesUploading, setCookiesUploading] = useState(false)
+  const [cookiesError,   setCookiesError]   = useState('')
 
   // Update modal state
   const [updateOpen,    setUpdateOpen]    = useState(false)
@@ -25,6 +28,7 @@ export default function SettingsPage() {
   useEffect(() => {
     settingsApi.get().then(setSettings).catch(() => null)
     versionApi.get().then(setVersion).catch(() => null)
+    cookiesApi.status().then(s => setCookiesOk(s.configured)).catch(() => null)
   }, [])
 
   // Auto-scroll logs
@@ -95,6 +99,26 @@ export default function SettingsPage() {
       // Refresh version info after successful update
       versionApi.get().then(setVersion).catch(() => null)
     }
+  }
+
+  async function uploadCookies(file: File) {
+    setCookiesUploading(true)
+    setCookiesError('')
+    try {
+      await cookiesApi.upload(file)
+      setCookiesOk(true)
+    } catch (e) {
+      setCookiesError((e as Error).message)
+    } finally {
+      setCookiesUploading(false)
+    }
+  }
+
+  async function removeCookies() {
+    try {
+      await cookiesApi.remove()
+      setCookiesOk(false)
+    } catch { /* ignore */ }
   }
 
   async function resetSetup() {
@@ -221,6 +245,63 @@ export default function SettingsPage() {
               onChange={() => setSettings(s => s ? { ...s, autoSync: !s.autoSync } : s)}
             />
           </div>
+        </Section>
+
+        {/* YouTube authentication */}
+        <Section title="YouTube Authentication" hint="Required if downloads fail with 'Sign in to confirm you're not a bot'. Export cookies from a browser where you're logged into YouTube.">
+          {cookiesOk === null ? (
+            <div className="flex items-center gap-2 text-sm text-[#475467]">
+              <Spinner size={14} className="text-[#BB0000]" /> Checking…
+            </div>
+          ) : cookiesOk ? (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#12B76A]/15">
+                  <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="#12B76A" strokeWidth="2.5" strokeLinecap="round">
+                    <path d="M2 6l3 3 5-5" />
+                  </svg>
+                </div>
+                <p className="text-sm text-[#D0D5DD]">Cookies configured</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="cursor-pointer">
+                  <span className="rounded-lg border border-[#344054] bg-[#1D2939] px-3 py-1.5 text-xs font-medium text-[#D0D5DD] hover:border-[#475467] transition-colors">
+                    Replace
+                  </span>
+                  <input type="file" accept=".txt" className="sr-only"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) uploadCookies(f); e.target.value = '' }} />
+                </label>
+                <Button variant="ghost" size="sm" onClick={removeCookies}>Remove</Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="rounded-lg border border-[#344054]/60 bg-[#0C111D] px-4 py-3 space-y-1.5">
+                <p className="text-xs font-semibold text-[#D0D5DD]">How to export cookies:</p>
+                <ol className="text-xs text-[#667085] space-y-1 list-decimal list-inside">
+                  <li>Install the <span className="text-[#D0D5DD]">Get cookies.txt LOCALLY</span> browser extension</li>
+                  <li>Log into YouTube in your browser</li>
+                  <li>Visit youtube.com and export cookies using the extension</li>
+                  <li>Upload the downloaded <span className="font-mono text-[#D0D5DD]">cookies.txt</span> file below</li>
+                </ol>
+              </div>
+              <label className="cursor-pointer inline-block">
+                <span className={`inline-flex items-center gap-2 rounded-lg border border-[#344054] bg-[#1D2939] px-4 py-2 text-sm font-medium text-[#D0D5DD] hover:border-[#475467] transition-colors ${cookiesUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                  {cookiesUploading ? <><Spinner size={13} className="text-[#BB0000]" /> Uploading…</> : <>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                    Upload cookies.txt
+                  </>}
+                </span>
+                <input type="file" accept=".txt" className="sr-only"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) uploadCookies(f); e.target.value = '' }} />
+              </label>
+              {cookiesError && (
+                <p className="text-xs text-[#FDA29B]">{cookiesError}</p>
+              )}
+            </div>
+          )}
         </Section>
 
         {/* Advanced */}
