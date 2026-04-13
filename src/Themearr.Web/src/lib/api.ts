@@ -142,22 +142,6 @@ export const cookiesApi = {
   remove: () => request<{ configured: boolean }>('/api/settings/cookies', { method: 'DELETE' }),
 }
 
-// ── YouTube authentication ────────────────────────────────────────────────────
-
-export const youtubeAuthApi = {
-  status: () => request<{
-    authenticated: boolean
-    flowState: 'idle' | 'waitingforuser' | 'completed' | 'failed'
-    deviceUrl: string | null
-    userCode:  string | null
-    error:     string | null
-    logs:      string[]
-  }>('/api/youtube-auth'),
-
-  start:  () => request<void>('/api/youtube-auth/start', { method: 'POST' }),
-  revoke: () => request<{ authenticated: boolean }>('/api/youtube-auth', { method: 'DELETE' }),
-}
-
 // ── Stats ─────────────────────────────────────────────────────────────────────
 
 export const statsApi = {

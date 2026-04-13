@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { youtubeAuthApi, cookiesApi, settingsApi, setupApi, versionApi } from '@/lib/api'
+import { cookiesApi, settingsApi, setupApi, versionApi } from '@/lib/api'
 import type { Settings, VersionInfo } from '@/lib/types'
 import { AppShell } from '@/components/layout/AppShell'
 import { Button, Input, Spinner } from '@/components/ui'
@@ -12,10 +12,6 @@ export default function SettingsPage() {
   const [saving,         setSaving]         = useState(false)
   const [saved,          setSaved]          = useState(false)
   const [error,          setError]          = useState('')
-  const [ytAuth,      setYtAuth]      = useState<{ authenticated: boolean; flowState: string; deviceUrl: string | null; userCode: string | null; error: string | null; logs: string[] } | null>(null)
-  const [ytStarting,  setYtStarting]  = useState(false)
-  const [ytPolling,   setYtPolling]   = useState(false)
-  const ytUrlOpened = useRef(false)
   const [cookiesOk,   setCookiesOk]   = useState<boolean | null>(null)
   const [cookiesUploading, setCookiesUploading] = useState(false)
   const [cookiesError, setCookiesError] = useState('')
@@ -32,28 +28,8 @@ export default function SettingsPage() {
   useEffect(() => {
     settingsApi.get().then(setSettings).catch(() => null)
     versionApi.get().then(setVersion).catch(() => null)
-    youtubeAuthApi.status().then(setYtAuth).catch(() => null)
     cookiesApi.status().then(s => setCookiesOk(s.configured)).catch(() => null)
   }, [])
-
-  // Poll from the moment the user clicks Connect until auth completes or fails
-  useEffect(() => {
-    if (!ytPolling) return
-    const id = setInterval(() => {
-      youtubeAuthApi.status().then(s => {
-        // Auto-open the device URL the first time it appears
-        if (s.deviceUrl && !ytUrlOpened.current) {
-          ytUrlOpened.current = true
-          window.open(s.deviceUrl, '_blank', 'noopener,noreferrer')
-        }
-        setYtAuth(s)
-        if (s.authenticated || s.flowState === 'completed' || s.flowState === 'failed') {
-          setYtPolling(false)
-        }
-      }).catch(() => null)
-    }, 1500)
-    return () => clearInterval(id)
-  }, [ytPolling])
 
   // Auto-scroll logs
   useEffect(() => {
@@ -123,23 +99,6 @@ export default function SettingsPage() {
       // Refresh version info after successful update
       versionApi.get().then(setVersion).catch(() => null)
     }
-  }
-
-  async function startYouTubeAuth() {
-    setYtStarting(true)
-    ytUrlOpened.current = false
-    try {
-      await youtubeAuthApi.start()
-      setYtPolling(true)   // start polling immediately — don't wait for 'waitingforuser'
-    } catch { /* ignore */ }
-    finally { setYtStarting(false) }
-  }
-
-  async function revokeYouTubeAuth() {
-    setYtPolling(false)
-    ytUrlOpened.current = false
-    await youtubeAuthApi.revoke().catch(() => null)
-    setYtAuth(a => a ? { ...a, authenticated: false, flowState: 'idle', deviceUrl: null, userCode: null, logs: [] } : null)
   }
 
   async function uploadCookies(file: File) {
@@ -287,7 +246,7 @@ export default function SettingsPage() {
         </Section>
 
         {/* YouTube authentication */}
-        <Section title="YouTube Authentication" hint="Required if downloads fail with 'Sign in to confirm you're not a bot'. Choose either method below.">
+        <Section title="YouTube Authentication" hint="Required if downloads fail with 'Sign in to confirm you're not a bot'.">
 
           {/* Account warning */}
           <div className="flex gap-2.5 rounded-lg border border-[#F79009]/30 bg-[#F79009]/5 px-3.5 py-3">
@@ -295,129 +254,51 @@ export default function SettingsPage() {
               <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
             </svg>
             <p className="text-xs text-[#D0D5DD] leading-relaxed">
-              Both methods involve a Google/YouTube account. There is a small risk of the account being flagged for ToS violations.
+              This involves a Google/YouTube account. There is a small risk of the account being flagged for ToS violations.
               <span className="font-semibold text-[#FEC84B]"> Use a secondary Google account</span>, not your main one.
             </p>
           </div>
 
-          <div className="border-t border-[#1D2939]" />
-
-          {/* Option 1 — OAuth2 */}
-          <div className="space-y-3">
-            <div>
-              <p className="text-sm font-medium text-[#F9FAFB]">Option 1 — Connect via device code</p>
-              <p className="text-xs text-[#667085] mt-0.5">Easiest setup. Visit a URL on your phone or laptop and click Allow.</p>
-            </div>
-
-            {ytAuth === null ? (
-              <div className="flex items-center gap-2 text-sm text-[#475467]"><Spinner size={13} className="text-[#BB0000]" /> Checking…</div>
-            ) : ytAuth.authenticated ? (
-              <div className="flex items-center justify-between rounded-lg border border-[#12B76A]/30 bg-[#12B76A]/5 px-3.5 py-2.5">
-                <div className="flex items-center gap-2">
-                  <svg width="13" height="13" viewBox="0 0 12 12" fill="none" stroke="#12B76A" strokeWidth="2.5" strokeLinecap="round"><path d="M2 6l3 3 5-5" /></svg>
-                  <p className="text-sm text-[#D0D5DD]">Connected</p>
-                </div>
-                <Button variant="ghost" size="sm" onClick={revokeYouTubeAuth}>Disconnect</Button>
+          {cookiesOk === null ? (
+            <div className="flex items-center gap-2 text-sm text-[#475467]"><Spinner size={13} className="text-[#BB0000]" /> Checking…</div>
+          ) : cookiesOk ? (
+            <div className="flex items-center justify-between rounded-lg border border-[#12B76A]/30 bg-[#12B76A]/5 px-3.5 py-2.5">
+              <div className="flex items-center gap-2">
+                <svg width="13" height="13" viewBox="0 0 12 12" fill="none" stroke="#12B76A" strokeWidth="2.5" strokeLinecap="round"><path d="M2 6l3 3 5-5" /></svg>
+                <p className="text-sm text-[#D0D5DD]">Cookies configured</p>
               </div>
-            ) : ytAuth.flowState === 'waitingforuser' && ytAuth.deviceUrl ? (
-              <div className="rounded-xl border border-[#344054]/60 bg-[#0C111D] p-4 space-y-3 text-center">
-                <p className="text-xs text-[#667085]">Open this URL on any device and enter the code</p>
-                <a href={ytAuth.deviceUrl} target="_blank" rel="noopener noreferrer"
-                  className="block text-sm font-semibold text-[#CC3333] hover:underline">{ytAuth.deviceUrl}</a>
-                {ytAuth.userCode && (
-                  <div className="inline-flex items-center gap-3 rounded-lg border border-[#344054] bg-[#1D2939] px-5 py-3">
-                    <span className="font-mono text-2xl font-bold tracking-widest text-[#F9FAFB]">{ytAuth.userCode}</span>
-                    <button onClick={() => navigator.clipboard.writeText(ytAuth.userCode!)}
-                      className="text-[#475467] hover:text-[#D0D5DD] transition-colors" title="Copy">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                        <rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                      </svg>
-                    </button>
-                  </div>
-                )}
-                <div className="flex items-center justify-center gap-2 text-xs text-[#475467]">
-                  <Spinner size={12} className="text-[#BB0000]" /> Waiting for authorisation…
-                </div>
-                <Button variant="ghost" size="sm" onClick={revokeYouTubeAuth}>Cancel</Button>
-              </div>
-            ) : ytAuth.flowState === 'failed' ? (
-              <div className="space-y-2">
-                <p className="text-xs text-[#FDA29B]">{ytAuth.error ?? 'Authentication failed.'}</p>
-                {ytAuth.logs?.length > 0 && (
-                  <div className="max-h-28 overflow-y-auto rounded-lg bg-[#0C111D] px-3 py-2">
-                    {ytAuth.logs.map((l: string, i: number) => <p key={i} className="font-mono text-[11px] leading-relaxed text-[#667085]">{l}</p>)}
-                  </div>
-                )}
-                <Button size="sm" onClick={startYouTubeAuth} loading={ytStarting}>Try again</Button>
-              </div>
-            ) : ytPolling ? (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-sm text-[#475467]">
-                  <Spinner size={13} className="text-[#BB0000]" />
-                  Connecting to YouTube…
-                </div>
-                {ytAuth.logs?.length > 0 && (
-                  <div className="max-h-28 overflow-y-auto rounded-lg bg-[#0C111D] px-3 py-2">
-                    {ytAuth.logs.map((l: string, i: number) => <p key={i} className="font-mono text-[11px] leading-relaxed text-[#667085]">{l}</p>)}
-                  </div>
-                )}
-                <Button variant="ghost" size="sm" onClick={revokeYouTubeAuth}>Cancel</Button>
-              </div>
-            ) : (
-              <Button size="sm" onClick={startYouTubeAuth} loading={ytStarting}>Connect YouTube account</Button>
-            )}
-          </div>
-
-          <div className="border-t border-[#1D2939]" />
-
-          {/* Option 2 — Cookies */}
-          <div className="space-y-3">
-            <div>
-              <p className="text-sm font-medium text-[#F9FAFB]">Option 2 — Upload cookies.txt</p>
-              <p className="text-xs text-[#667085] mt-0.5">No persistent app access. Export once from your browser.</p>
-            </div>
-
-            {cookiesOk === null ? (
-              <div className="flex items-center gap-2 text-sm text-[#475467]"><Spinner size={13} className="text-[#BB0000]" /> Checking…</div>
-            ) : cookiesOk ? (
-              <div className="flex items-center justify-between rounded-lg border border-[#12B76A]/30 bg-[#12B76A]/5 px-3.5 py-2.5">
-                <div className="flex items-center gap-2">
-                  <svg width="13" height="13" viewBox="0 0 12 12" fill="none" stroke="#12B76A" strokeWidth="2.5" strokeLinecap="round"><path d="M2 6l3 3 5-5" /></svg>
-                  <p className="text-sm text-[#D0D5DD]">Cookies configured</p>
-                </div>
-                <div className="flex gap-2">
-                  <label className="cursor-pointer">
-                    <span className="rounded-md border border-[#344054] bg-[#1D2939] px-2.5 py-1.5 text-xs font-medium text-[#D0D5DD] hover:border-[#475467] transition-colors">Replace</span>
-                    <input type="file" accept=".txt" className="sr-only"
-                      onChange={e => { const f = e.target.files?.[0]; if (f) uploadCookies(f); e.target.value = '' }} />
-                  </label>
-                  <Button variant="ghost" size="sm" onClick={removeCookies}>Remove</Button>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <div className="rounded-lg border border-[#1D2939] bg-[#0C111D] px-3.5 py-3 space-y-1">
-                  <p className="text-xs font-medium text-[#D0D5DD]">How to get cookies.txt</p>
-                  <ol className="text-xs text-[#667085] space-y-0.5 list-decimal list-inside">
-                    <li>Install the <span className="text-[#D0D5DD]">Get cookies.txt LOCALLY</span> browser extension</li>
-                    <li>Log into YouTube with a secondary account</li>
-                    <li>On youtube.com, click the extension and export</li>
-                    <li>Upload the file below</li>
-                  </ol>
-                </div>
-                <label className="cursor-pointer inline-block">
-                  <span className={`inline-flex items-center gap-2 rounded-lg border border-[#344054] bg-[#1D2939] px-4 py-2 text-sm font-medium text-[#D0D5DD] hover:border-[#475467] transition-colors ${cookiesUploading ? 'opacity-50 pointer-events-none' : ''}`}>
-                    {cookiesUploading
-                      ? <><Spinner size={13} className="text-[#BB0000]" /> Uploading…</>
-                      : <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>Upload cookies.txt</>}
-                  </span>
+              <div className="flex gap-2">
+                <label className="cursor-pointer">
+                  <span className="rounded-md border border-[#344054] bg-[#1D2939] px-2.5 py-1.5 text-xs font-medium text-[#D0D5DD] hover:border-[#475467] transition-colors">Replace</span>
                   <input type="file" accept=".txt" className="sr-only"
                     onChange={e => { const f = e.target.files?.[0]; if (f) uploadCookies(f); e.target.value = '' }} />
                 </label>
-                {cookiesError && <p className="text-xs text-[#FDA29B]">{cookiesError}</p>}
+                <Button variant="ghost" size="sm" onClick={removeCookies}>Remove</Button>
               </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="rounded-lg border border-[#1D2939] bg-[#0C111D] px-3.5 py-3 space-y-1">
+                <p className="text-xs font-medium text-[#D0D5DD]">How to get cookies.txt</p>
+                <ol className="text-xs text-[#667085] space-y-0.5 list-decimal list-inside">
+                  <li>Install the <span className="text-[#D0D5DD]">Get cookies.txt LOCALLY</span> browser extension</li>
+                  <li>Log into YouTube with a secondary account</li>
+                  <li>On youtube.com, click the extension and export</li>
+                  <li>Upload the file below</li>
+                </ol>
+              </div>
+              <label className="cursor-pointer inline-block">
+                <span className={`inline-flex items-center gap-2 rounded-lg border border-[#344054] bg-[#1D2939] px-4 py-2 text-sm font-medium text-[#D0D5DD] hover:border-[#475467] transition-colors ${cookiesUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                  {cookiesUploading
+                    ? <><Spinner size={13} className="text-[#BB0000]" /> Uploading…</>
+                    : <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>Upload cookies.txt</>}
+                </span>
+                <input type="file" accept=".txt" className="sr-only"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) uploadCookies(f); e.target.value = '' }} />
+              </label>
+              {cookiesError && <p className="text-xs text-[#FDA29B]">{cookiesError}</p>}
+            </div>
+          )}
 
         </Section>
 
