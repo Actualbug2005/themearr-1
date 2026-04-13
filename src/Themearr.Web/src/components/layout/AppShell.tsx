@@ -22,7 +22,9 @@ export function AppShell({ children, title, actions }: AppShellProps) {
             {actions && <div className="flex items-center gap-2">{actions}</div>}
           </header>
         )}
-        <main className="flex-1 px-6 py-6">{children}</main>
+        <main className="flex-1 px-6 py-6">
+          <div className="mx-auto w-full max-w-[1024px]">{children}</div>
+        </main>
       </div>
     </div>
   )

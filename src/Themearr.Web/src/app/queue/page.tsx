@@ -1,6 +1,5 @@
 'use client'
 
-import Image from 'next/image'
 import { useEffect, useRef, useState } from 'react'
 import { moviesApi, settingsApi } from '@/lib/api'
 import type { Movie, YoutubeResult } from '@/lib/types'
@@ -17,7 +16,6 @@ export default function QueuePage() {
   const [error,        setError]        = useState('')
   const [downloading,  setDownloading]  = useState(false)
   const [autoMode,     setAutoMode]     = useState(false)
-  const [upNextOpen,   setUpNextOpen]   = useState(false)
 
   // Holds the movieId being downloaded so the polling closure keeps the right id
   const downloadingMovieId = useRef<string | null>(null)
@@ -245,33 +243,27 @@ export default function QueuePage() {
           </div>
         </div>
 
-        {/* Up next collapsible */}
+        {/* Up next */}
         {pending && pending.length > currentIdx + 1 && (
           <div className="rounded-xl border border-[#1D2939] bg-[#101828] overflow-hidden">
-            <button
-              className="w-full flex items-center justify-between px-4 py-3 text-xs font-semibold text-[#667085] uppercase tracking-wider hover:bg-[#1D2939]/50 transition-colors"
-              onClick={() => setUpNextOpen((o: boolean) => !o)}
-            >
-              <span>Up next · {pending.length - currentIdx - 1} movie{pending.length - currentIdx - 1 !== 1 ? 's' : ''}</span>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className={`transition-transform ${upNextOpen ? 'rotate-180' : ''}`}>
-                <path d="M6 9l6 6 6-6" />
-              </svg>
-            </button>
-            {upNextOpen && (
-              <div className="divide-y divide-[#1D2939] border-t border-[#1D2939] max-h-64 overflow-y-auto">
-                {pending.slice(currentIdx + 1, currentIdx + 11).map((movie: Movie, i: number) => (
-                  <button
-                    key={movie.id}
-                    onClick={() => { setCurrentIdx(currentIdx + 1 + i); setUpNextOpen(false) }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#1D2939]/60 transition-colors text-left"
-                  >
-                    <span className="text-xs text-[#475467] w-4 flex-shrink-0">{i + 1}</span>
-                    <span className="text-sm text-[#D0D5DD] truncate flex-1">{movie.title}</span>
-                    {movie.year && <span className="text-xs text-[#475467] flex-shrink-0">{movie.year}</span>}
-                  </button>
-                ))}
-              </div>
-            )}
+            <div className="px-4 py-3 border-b border-[#1D2939]">
+              <p className="text-xs font-semibold text-[#667085] uppercase tracking-wider">
+                Up next · {pending.length - currentIdx - 1} movie{pending.length - currentIdx - 1 !== 1 ? 's' : ''}
+              </p>
+            </div>
+            <div className="divide-y divide-[#1D2939] max-h-72 overflow-y-auto">
+              {pending.slice(currentIdx + 1, currentIdx + 11).map((movie: Movie, i: number) => (
+                <button
+                  key={movie.id}
+                  onClick={() => setCurrentIdx(currentIdx + 1 + i)}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#1D2939]/60 transition-colors text-left"
+                >
+                  <span className="text-xs text-[#475467] w-4 flex-shrink-0">{i + 1}</span>
+                  <span className="text-sm text-[#D0D5DD] truncate flex-1">{movie.title}</span>
+                  {movie.year && <span className="text-xs text-[#475467] flex-shrink-0">{movie.year}</span>}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
@@ -412,14 +404,12 @@ function MoviePoster({ movie }: { movie: Movie }) {
   if (movie.posterUrl && !imgError) {
     return (
       <div className="relative h-24 w-16 flex-shrink-0 overflow-hidden rounded-lg bg-[#1D2939]">
-        <Image
+        <img
           src={movie.posterUrl}
           alt={movie.title}
-          fill
-          sizes="64px"
-          className="object-cover"
+          className="absolute inset-0 h-full w-full object-cover"
           onError={() => setImgError(true)}
-          unoptimized
+          loading="lazy"
         />
       </div>
     )

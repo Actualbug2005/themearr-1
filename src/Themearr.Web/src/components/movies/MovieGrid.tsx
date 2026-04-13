@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import Image from 'next/image'
 import type { Movie } from '@/lib/types'
 import { moviesApi } from '@/lib/api'
 import { Button, EmptyState, Spinner } from '@/components/ui'
@@ -230,14 +229,12 @@ function MovieCard({ movie, onClick }: { movie: Movie; onClick: () => void }) {
       {/* Poster */}
       <div className={`relative w-full overflow-hidden rounded-lg bg-[#1D2939] ${isIgnored ? 'opacity-40' : ''}`} style={{ aspectRatio: '2/3' }}>
         {movie.posterUrl && !imgError ? (
-          <Image
+          <img
             src={movie.posterUrl}
             alt={movie.title}
-            fill
-            sizes="(max-width: 640px) 33vw, (max-width: 768px) 25vw, (max-width: 1024px) 20vw, (max-width: 1280px) 16vw, 12vw"
-            className="object-cover transition-transform duration-200 group-hover:scale-105"
+            className="absolute inset-0 h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
             onError={() => setImgError(true)}
-            unoptimized
+            loading="lazy"
           />
         ) : (
           <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-2">
